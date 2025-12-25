@@ -3,7 +3,9 @@ local GetDraggingObject = game.ServerScriptService.GetDraggingObject
 local SetToolState = game.ServerScriptService.SetToolState
 
 function Init(tool: Model)
-	if not tool:IsA("Model") then return end
+	if not tool:IsA("Model") then
+		return
+	end
 
 	if tool.Name == "Soup Pot" then
 		local prompt = Instance.new("ProximityPrompt")
@@ -16,10 +18,14 @@ function Init(tool: Model)
 
 		prompt.Triggered:Connect(function(player)
 			local draggedPart = GetDraggingObject:Invoke(player)
-			if not draggedPart then return end
+			if not draggedPart then
+				return
+			end
 
 			local ingredientModel: Model = draggedPart:FindFirstAncestorOfClass("Model")
-			if not ingredientModel then return end
+			if not ingredientModel then
+				return
+			end
 
 			if ingredientModel.Name == "Soup" then
 				SetToolState:Invoke(ingredientModel, true)
