@@ -1,5 +1,4 @@
 local Players = game:GetService("Players")
-local CollectionService = game:GetService("CollectionService")
 
 local function setupCharacter(character: Model)
 	for _, obj in ipairs(character:GetDescendants()) do
