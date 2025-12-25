@@ -4,14 +4,8 @@ local DragRequest = game.ReplicatedStorage:WaitForChild("DragRequest")
 local GetDraggingObject = game.ServerScriptService:WaitForChild("GetDraggingObject")
 local ReleaseDraggingObject = game.ServerScriptService:WaitForChild("ReleaseDraggingObject")
 
---------------------------------------------------
--- State
---------------------------------------------------
 local PlayerDragging = {}
 
---------------------------------------------------
--- Helpers
---------------------------------------------------
 local function isBeingDraggedByOther(player, object)
 	for p, dragged in pairs(PlayerDragging) do
 		if p ~= player and dragged == object then
@@ -39,22 +33,20 @@ local function setCollisionGroupFromPart(part, groupName)
 	end
 end
 
---------------------------------------------------
--- RemoteFunction (Client -> Server)
---------------------------------------------------
-DragRequest.OnServerInvoke = function(
-	player: Player,
-	object: BasePart,
-	requestingPickup: boolean
-)
-	-- =====================
-	-- PICKUP
-	-- =====================
+DragRequest.OnServerInvoke = function(player: Player, object: BasePart, requestingPickup: boolean)
 	if requestingPickup then
-		if not object then return false end
-		if not object:IsDescendantOf(workspace) then return false end
-		if PlayerDragging[player] then return false end
-		if isBeingDraggedByOther(player, object) then return false end
+		if not object then
+			return false
+		end
+		if not object:IsDescendantOf(workspace) then
+			return false
+		end
+		if PlayerDragging[player] then
+			return false
+		end
+		if isBeingDraggedByOther(player, object) then
+			return false
+		end
 
 		object:SetNetworkOwner(player)
 		PlayerDragging[player] = object
@@ -63,9 +55,6 @@ DragRequest.OnServerInvoke = function(
 		return true
 	end
 
-	-- =====================
-	-- DROP
-	-- =====================
 	local current = PlayerDragging[player]
 	if not current then
 		return true
@@ -80,19 +69,15 @@ DragRequest.OnServerInvoke = function(
 	return true
 end
 
---------------------------------------------------
--- BindableFunction: 查詢目前拖曳物件
---------------------------------------------------
 GetDraggingObject.OnInvoke = function(player: Player)
 	return PlayerDragging[player]
 end
 
---------------------------------------------------
--- BindableFunction: 強制釋放（Server -> Server）
---------------------------------------------------
 ReleaseDraggingObject.OnInvoke = function(player: Player)
 	local current = PlayerDragging[player]
-	if not current then return end
+	if not current then
+		return
+	end
 
 	if current:IsDescendantOf(workspace) then
 		current:SetNetworkOwner(nil)
@@ -102,9 +87,6 @@ ReleaseDraggingObject.OnInvoke = function(player: Player)
 	PlayerDragging[player] = nil
 end
 
---------------------------------------------------
--- Cleanup
---------------------------------------------------
 Players.PlayerRemoving:Connect(function(player)
 	PlayerDragging[player] = nil
 end)
