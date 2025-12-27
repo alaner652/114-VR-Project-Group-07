@@ -71,7 +71,11 @@ local function setHighlight(object: Instance?)
 	lastHighlighted = model
 end
 
-local function getOrCreateDragAttachment(part: Part): Attachment
+local function getOrCreateDragAttachment(part: Part?): Attachment?
+	if not part or not part.Parent then
+		return nil
+	end
+
 	local att = part:FindFirstChild("DragAttachment")
 	if not att then
 		att = Instance.new("Attachment")
@@ -107,9 +111,19 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		return
 	end
 
-	if dragRemote:InvokeServer(target, true) then
-		grabbedObject = target
+	local candidate = target
+	if dragRemote:InvokeServer(candidate, true) then
+		-- target might be destroyed between hover and pickup
+		if not candidate or not candidate.Parent then
+			return
+		end
+
+		grabbedObject = candidate
 		dragAttachment = getOrCreateDragAttachment(grabbedObject)
+		if not dragAttachment then
+			dropObject()
+			return
+		end
 
 		script.AlignOrientation.Attachment0 = dragAttachment
 		script.AlignPosition.Attachment0 = dragAttachment
