@@ -6,21 +6,18 @@ local ReleaseDraggingObject = game.ServerScriptService:WaitForChild("ReleaseDrag
 
 local PlayerDragging = {}
 
-local function isBeingDraggedByOther(player, object)
-	for p, dragged in pairs(PlayerDragging) do
-		if p ~= player and dragged == object then
-			return true
-		end
-	end
-	return false
-end
-
 local function getRoot(instance)
+	if not instance then
+		return nil
+	end
+
 	return instance:FindFirstAncestorOfClass("Model") or instance
 end
 
-local function setCollisionGroupFromPart(part, groupName)
-	local root = getRoot(part)
+local function setCollisionGroupForRoot(root, groupName)
+	if not root then
+		return
+	end
 
 	if root:IsA("BasePart") then
 		root.CollisionGroup = groupName
@@ -33,9 +30,42 @@ local function setCollisionGroupFromPart(part, groupName)
 	end
 end
 
-DragRequest.OnServerInvoke = function(player: Player, object: BasePart, requestingPickup: boolean)
-	local root: Model = getRoot(object)
+local function stopDrag(player: Player)
+	local current = PlayerDragging[player]
+	if not current then
+		return
+	end
 
+	local root = getRoot(current)
+
+	if current:IsDescendantOf(workspace) and root then
+		current:SetNetworkOwner(nil)
+		setCollisionGroupForRoot(root, "Default")
+		root:SetAttribute("BeingDragged", false)
+	end
+
+	PlayerDragging[player] = nil
+end
+
+local function startDrag(player: Player, object: BasePart)
+	local root = getRoot(object)
+	if not root then
+		return false
+	end
+
+	if root:GetAttribute("BeingDragged") == true then
+		return false
+	end
+
+	object:SetNetworkOwner(player)
+	setCollisionGroupForRoot(root, "Draggable")
+	root:SetAttribute("BeingDragged", true)
+	PlayerDragging[player] = object
+
+	return true
+end
+
+DragRequest.OnServerInvoke = function(player: Player, object: BasePart?, requestingPickup: boolean)
 	if requestingPickup then
 		if not object then
 			return false
@@ -46,30 +76,11 @@ DragRequest.OnServerInvoke = function(player: Player, object: BasePart, requesti
 		if PlayerDragging[player] then
 			return false
 		end
-		if isBeingDraggedByOther(player, object) then
-			return false
-		end
 
-		object:SetNetworkOwner(player)
-		PlayerDragging[player] = object
-		setCollisionGroupFromPart(object, "Draggable")
-		root:SetAttribute("BeingDragged", true)
-
-		return true
+		return startDrag(player, object)
 	end
 
-	local current = PlayerDragging[player]
-	if not current then
-		return true
-	end
-
-	if current:IsDescendantOf(workspace) then
-		current:SetNetworkOwner(nil)
-		setCollisionGroupFromPart(current, "Default")
-		root:SetAttribute("BeingDragged", false)
-	end
-
-	PlayerDragging[player] = nil
+	stopDrag(player)
 	return true
 end
 
@@ -78,19 +89,9 @@ GetDraggingObject.OnInvoke = function(player: Player)
 end
 
 ReleaseDraggingObject.OnInvoke = function(player: Player)
-	local current = PlayerDragging[player]
-	if not current then
-		return
-	end
-
-	if current:IsDescendantOf(workspace) then
-		current:SetNetworkOwner(nil)
-		setCollisionGroupFromPart(current, "Default")
-	end
-
-	PlayerDragging[player] = nil
+	stopDrag(player)
 end
 
 Players.PlayerRemoving:Connect(function(player)
-	PlayerDragging[player] = nil
+	stopDrag(player)
 end)

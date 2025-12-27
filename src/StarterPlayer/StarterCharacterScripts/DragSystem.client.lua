@@ -44,6 +44,15 @@ local function getRootModel(instance: Instance): Model?
 	return instance:FindFirstAncestorOfClass("Model")
 end
 
+local function isBeingDragged(instance: Instance): boolean
+	local model = getRootModel(instance)
+	if not model then
+		return false
+	 end
+
+	return model:GetAttribute("BeingDragged") == true
+end
+
 local lastHighlighted: Instance?
 
 local function setHighlight(object: Instance?)
@@ -136,13 +145,18 @@ RunService.RenderStepped:Connect(function()
 	local result = workspace:Raycast(ray.Origin, ray.Direction * MAX_DISTANCE, rayParams)
 
 	if result and result.Instance and result.Instance:HasTag("Draggable") then
-		target = result.Instance
-		state = DragState.Hovering
-
-		if not LIMIT_DISTANCE then
-			distance = (ray.Origin - result.Position).Magnitude
+		if isBeingDragged(result.Instance) then
+			target = nil
+			state = DragState.Idle
 		else
-			distance = MIN_DISTANCE
+			target = result.Instance
+			state = DragState.Hovering
+
+			if not LIMIT_DISTANCE then
+				distance = (ray.Origin - result.Position).Magnitude
+			else
+				distance = MIN_DISTANCE
+			end
 		end
 	else
 		target = nil

@@ -1,9 +1,10 @@
 local Knife = {}
 Knife.__index = Knife
 
-function Knife.new(model: Model)
+function Knife.new(bladePart: BasePart)
 	local self = setmetatable({
-		model = model,
+		model = bladePart:FindFirstAncestorOfClass("Model"),
+		blade = bladePart,
 		connection = nil,
 	}, Knife)
 
@@ -13,9 +14,13 @@ function Knife.new(model: Model)
 end
 
 function Knife:_initTouched()
-	self.connection = self.model.Touched:Connect(function(part: BasePart)
+	self.connection = self.blade.Touched:Connect(function(part: BasePart)
 		local ingredient = part:FindFirstAncestorOfClass("Model")
 		if not ingredient then
+			return
+		end
+
+		if self.model:GetAttribute("BeingDragged") ~= true then
 			return
 		end
 
