@@ -34,6 +34,8 @@ local function setCollisionGroupFromPart(part, groupName)
 end
 
 DragRequest.OnServerInvoke = function(player: Player, object: BasePart, requestingPickup: boolean)
+	local root: Model = getRoot(object)
+
 	if requestingPickup then
 		if not object then
 			return false
@@ -51,6 +53,7 @@ DragRequest.OnServerInvoke = function(player: Player, object: BasePart, requesti
 		object:SetNetworkOwner(player)
 		PlayerDragging[player] = object
 		setCollisionGroupFromPart(object, "Draggable")
+		root:SetAttribute("BeingDragged", true)
 
 		return true
 	end
@@ -63,6 +66,7 @@ DragRequest.OnServerInvoke = function(player: Player, object: BasePart, requesti
 	if current:IsDescendantOf(workspace) then
 		current:SetNetworkOwner(nil)
 		setCollisionGroupFromPart(current, "Default")
+		root:SetAttribute("BeingDragged", false)
 	end
 
 	PlayerDragging[player] = nil

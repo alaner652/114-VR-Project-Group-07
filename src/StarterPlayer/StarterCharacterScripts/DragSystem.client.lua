@@ -38,7 +38,9 @@ player.CharacterAdded:Connect(updateRaycastFilter)
 updateRaycastFilter()
 
 local function getRootModel(instance: Instance): Model?
-	if not instance then return nil end
+	if not instance then
+		return nil
+	end
 	return instance:FindFirstAncestorOfClass("Model")
 end
 
@@ -52,7 +54,9 @@ local function setHighlight(object: Instance?)
 	end
 
 	local model = getRootModel(object)
-	if lastHighlighted == model then return end
+	if lastHighlighted == model then
+		return
+	end
 
 	script.Highlight.Adornee = model
 	lastHighlighted = model
@@ -69,7 +73,9 @@ local function getOrCreateDragAttachment(part: Part): Attachment
 end
 
 local function dropObject()
-	if not grabbedObject then return end
+	if not grabbedObject then
+		return
+	end
 
 	dragRemote:InvokeServer(grabbedObject, false)
 
@@ -82,9 +88,15 @@ local function dropObject()
 end
 
 UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then return end
-	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-	if state ~= DragState.Hovering or not target then return end
+	if processed then
+		return
+	end
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		return
+	end
+	if state ~= DragState.Hovering or not target then
+		return
+	end
 
 	if dragRemote:InvokeServer(target, true) then
 		grabbedObject = target
@@ -97,8 +109,10 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
-UserInputService.InputEnded:Connect(function(input, processed)
-	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		return
+	end
 	dropObject()
 end)
 
@@ -119,11 +133,7 @@ RunService.RenderStepped:Connect(function()
 	local mousePos = UserInputService:GetMouseLocation()
 	local ray = camera:ViewportPointToRay(mousePos.X, mousePos.Y)
 
-	local result = workspace:Raycast(
-		ray.Origin,
-		ray.Direction * MAX_DISTANCE,
-		rayParams
-	)
+	local result = workspace:Raycast(ray.Origin, ray.Direction * MAX_DISTANCE, rayParams)
 
 	if result and result.Instance and result.Instance:HasTag("Draggable") then
 		target = result.Instance

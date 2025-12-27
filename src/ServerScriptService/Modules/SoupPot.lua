@@ -24,6 +24,18 @@ function SoupPot:_init()
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = self.model.PrimaryPart
 
+	local function updatePromptEnabled()
+		if not self.prompt then
+			return
+		end
+
+		local isBeingDragged = self.model:GetAttribute("BeingDragged")
+		self.prompt.Enabled = isBeingDragged ~= true
+	end
+
+	updatePromptEnabled()
+	self.dragConnection = self.model:GetAttributeChangedSignal("BeingDragged"):Connect(updatePromptEnabled)
+
 	self.connection = prompt.Triggered:Connect(function(player)
 		local dragged = GetDraggingObject:Invoke(player)
 
@@ -45,6 +57,10 @@ end
 function SoupPot:Destroy()
 	if self.connection then
 		self.connection:Disconnect()
+	end
+
+	if self.dragConnection then
+		self.dragConnection:Disconnect()
 	end
 
 	self.prompt:Destroy()

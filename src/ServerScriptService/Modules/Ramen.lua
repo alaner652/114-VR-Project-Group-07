@@ -15,13 +15,8 @@ local function forEachPart(model: Model, fn: (BasePart) -> ())
 end
 
 function Ramen.new(model: Model)
-	assert(model and model:IsA("Model"), "Ramen.new expects Model")
-
 	local ingredients = model:FindFirstChild("Ingredients")
-	assert(ingredients and ingredients:IsA("Folder"), "Ramen model requires Ingredients folder")
-
 	local required = model:GetAttribute("RequiredIngredients")
-
 	local self = setmetatable({
 		model = model,
 		ingredients = ingredients,
@@ -35,7 +30,7 @@ function Ramen.new(model: Model)
 		unlockedCount = 0,
 
 		prompt = Instance.new("ProximityPrompt"),
-		connection = nil,
+		connections = {},
 	}, Ramen)
 
 	self:_initIngredients()
@@ -69,16 +64,30 @@ function Ramen:_initPrompt()
 	if bowl and bowl:IsA("Model") then
 		bowl = bowl.PrimaryPart
 	end
-	assert(bowl and bowl:IsA("BasePart"), "Ramen requires Bowl part")
 
 	local prompt = self.prompt
 	prompt.ObjectText = self.model.Name
 	prompt.ActionText = "Add Ingredient"
-	prompt.MaxActivationDistance = 10
+	prompt.MaxActivationDistance = 4
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = bowl
 
-	self.connection = prompt.Triggered:Connect(function(player)
+	local function updatePromptEnabled()
+		local currentPrompt = self.prompt
+		if not currentPrompt then
+			return
+		end
+
+		local isBeingDragged = self.model:GetAttribute("BeingDragged")
+		currentPrompt.Enabled = isBeingDragged ~= true
+	end
+
+	updatePromptEnabled()
+	local beingDraggedChanged = self.model:GetAttributeChangedSignal("BeingDragged"):Connect(updatePromptEnabled)
+	self.connections["BeingDraggedChanged"] = beingDraggedChanged
+
+	local Triggered
+	Triggered = prompt.Triggered:Connect(function(player)
 		local dragged = GetDraggingObject:Invoke(player)
 		if not dragged then
 			return
@@ -102,6 +111,7 @@ function Ramen:_initPrompt()
 
 		self:_unlock(ingredient.Name)
 	end)
+	self.connections["PromptTriggered"] = Triggered
 end
 
 function Ramen:_unlock(name: string)
@@ -137,9 +147,10 @@ function Ramen:Complete()
 end
 
 function Ramen:Destroy()
-	if self.connection then
-		self.connection:Disconnect()
-		self.connection = nil
+	if self.connections then
+		for _, conn in pairs(self.connections) do
+			conn:Disconnect()
+		end
 	end
 
 	if self.prompt then
