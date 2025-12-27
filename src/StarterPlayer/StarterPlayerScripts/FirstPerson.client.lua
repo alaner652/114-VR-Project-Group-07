@@ -9,7 +9,6 @@ local function onCharacterAdded(character)
 	player.CameraMaxZoomDistance = 0.5
 
 	humanoid.AutoRotate = true
-
 	camera.CameraType = Enum.CameraType.Custom
 end
 

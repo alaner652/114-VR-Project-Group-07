@@ -2,11 +2,21 @@
   "name": "project",
   "tree": {
     "$className": "DataModel",
+
     "ServerScriptService": {
       "$className": "ServerScriptService",
       "$ignoreUnknownInstances": true,
       "$path": "src/ServerScriptService"
     },
+
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "Prefab": {
+        "$className": "Folder",
+        "$path": "assets/ServerStorage/Prefab"
+      }
+    },
+
     "StarterPlayer": {
       "$className": "StarterPlayer",
       "StarterCharacterScripts": {
