@@ -6,7 +6,7 @@ local humanoid = character:WaitForChild("Humanoid")
 player.CameraMode = Enum.CameraMode.LockFirstPerson
 humanoid.CameraOffset = Vector3.new(0, 0, -1)
 
-task.wait(1)
+task.wait()
 
 for _, BasePart in pairs(character:GetChildren()) do
 	if BasePart:IsA("BasePart") and BasePart.Name ~= "Head" then
