@@ -32,7 +32,7 @@ function Spawn:_init()
 		newObject.Parent = workspace.SpawnedObjects
 
 		if newObject.PrimaryPart then
-			newObject:SetPrimaryPartCFrame(self.model.PrimaryPart.CFrame)
+			newObject:SetPrimaryPartCFrame(self.model.PrimaryPart.CFrame * CFrame.new(0, 0, -1))
 		end
 	end)
 end

@@ -1,6 +1,6 @@
 local ServerScriptService = game:GetService("ServerScriptService")
+local CollectionService = game:GetService("CollectionService")
 
-local GetDraggingObject = ServerScriptService:WaitForChild("GetDraggingObject")
 local ReleaseDraggingObject = ServerScriptService:WaitForChild("ReleaseDraggingObject")
 
 local Ramen = {}
@@ -15,43 +15,52 @@ local function forEachPart(model: Model, fn: (BasePart) -> ())
 end
 
 function Ramen.new(model: Model)
-	local ingredients = model:FindFirstChild("Ingredients")
+	local ingredientsFolder = model:FindFirstChild("Ingredients")
+	if not ingredientsFolder then
+		warn(("Ramen %s has no Ingredients folder"):format(model.Name))
+		return setmetatable({}, Ramen)
+	end
+
 	local required = model:GetAttribute("RequiredIngredients")
+
 	local self = setmetatable({
 		model = model,
-		ingredients = ingredients,
-
+		ingredientsFolder = ingredientsFolder,
 		recipe = {},
 		unlocked = {},
-		transparency = {},
-
+		hiddenProps = {},
 		total = 0,
 		required = typeof(required) == "number" and required or 0,
 		unlockedCount = 0,
-
-		prompt = Instance.new("ProximityPrompt"),
-		connections = {},
+		touchConn = nil,
 	}, Ramen)
 
-	self:_initIngredients()
-
+	self:_cacheRecipe()
 	if self.required <= 0 or self.required > self.total then
 		self.required = self.total
 	end
 
-	self:_initTouch()
-
+	self:_bindTouch()
 	return self
 end
 
-function Ramen:_initIngredients()
-	for _, ingredient in ipairs(self.ingredients:GetChildren()) do
+function Ramen:_cacheRecipe()
+	for _, ingredient in ipairs(self.ingredientsFolder:GetChildren()) do
 		if ingredient:IsA("Model") then
-			self.recipe[ingredient.Name] = true
+			local key = ingredient:GetAttribute("IngredientType") or ingredient.Name
+			self.recipe[key] = ingredient
 			self.total += 1
 
 			forEachPart(ingredient, function(part)
-				self.transparency[part] = part.Transparency
+				local originalTransparency = part.Transparency
+				if originalTransparency >= 0.99 then
+					originalTransparency = 0
+				end
+
+				self.hiddenProps[part] = {
+					Transparency = originalTransparency,
+					CanCollide = part.CanCollide,
+				}
 				part.Transparency = 1
 				part.CanCollide = false
 			end)
@@ -59,109 +68,108 @@ function Ramen:_initIngredients()
 	end
 end
 
-function Ramen:_initTouch()
-	local bowlModel = self.model
-	if not bowlModel or not bowlModel:IsA("Model") then
-		warn("Bowl model not found")
-		return
+local function getBowlPart(model: Model): BasePart?
+	if model.PrimaryPart then
+		return model.PrimaryPart
 	end
+	return model:FindFirstChildWhichIsA("BasePart", true)
+end
 
-	local bowlPart = bowlModel.PrimaryPart
+function Ramen:_bindTouch()
+	local bowlPart = getBowlPart(self.model)
 	if not bowlPart then
-		warn("Bowl has no PrimaryPart")
+		warn(("Ramen %s has no primary BasePart"):format(self.model.Name))
 		return
 	end
 
 	local debounce = false
 
-	local connection
-	connection = bowlPart.Touched:Connect(function(hit)
+	self.touchConn = bowlPart.Touched:Connect(function(hit)
 		if debounce then
 			return
 		end
 
-		local ingredient = hit:FindFirstAncestorOfClass("Model")
-		if not ingredient then
+		local ingredientModel = hit:FindFirstAncestorOfClass("Model")
+		if not ingredientModel then
 			return
 		end
 
-		if not self.recipe[ingredient.Name] then
+		local isDraggable = CollectionService:HasTag(ingredientModel, "Draggable")
+			or CollectionService:HasTag(hit, "Draggable")
+		if not isDraggable then
+			return
+		end
+		if ingredientModel:GetAttribute("BeingDragged") ~= true then
 			return
 		end
 
-		if ingredient:GetAttribute("BeingDragged") ~= true then
+		local key = ingredientModel:GetAttribute("IngredientType") or ingredientModel.Name
+		if not self.recipe[key] then
+			return
+		end
+		if self.unlocked[key] then
 			return
 		end
 
 		debounce = true
 
-		if ingredient.Name == "Soup" then
-			if ingredient:GetAttribute("Active") ~= true then
+		if ingredientModel.Name == "Soup" then
+			if ingredientModel:GetAttribute("Active") ~= true then
 				debounce = false
 				return
 			end
-
-			ingredient:SetAttribute("Active", false)
+			ingredientModel:SetAttribute("Active", false)
 		else
-			ReleaseDraggingObject:Invoke()
-			ingredient:Destroy()
+			local owner = ingredientModel.PrimaryPart and ingredientModel.PrimaryPart:GetNetworkOwner()
+			if owner then
+				ReleaseDraggingObject:Invoke(owner)
+			end
+			ingredientModel:Destroy()
 		end
 
-		self:_unlock(ingredient.Name)
+		self:_unlock(key)
 
-		task.delay(0.2, function()
+		task.delay(0.15, function()
 			debounce = false
 		end)
 	end)
-
-	self.connections["BowlTouched"] = connection
 end
 
-function Ramen:_unlock(name: string)
-	if self.unlocked[name] then
+function Ramen:_unlock(key: string)
+	if self.unlocked[key] then
 		return
 	end
 
-	local ingredient = self.ingredients:FindFirstChild(name)
+	local ingredient = self.recipe[key]
 	if not ingredient then
+		warn(("Ramen missing ingredient %s"):format(key))
 		return
 	end
 
 	forEachPart(ingredient, function(part)
-		part.Transparency = self.transparency[part]
-		part.CanCollide = true
+		local original = self.hiddenProps[part]
+		if original then
+			part.Transparency = original.Transparency
+			part.CanCollide = original.CanCollide
+		else
+			part.Transparency = 0
+			part.CanCollide = true
+		end
 	end)
 
-	self.unlocked[name] = true
+	self.unlocked[key] = true
 	self.unlockedCount += 1
 
 	if self.unlockedCount >= self.required then
-		self:Complete()
+		self.model:SetAttribute("Completed", true)
 	end
-end
-
-function Ramen:Complete()
-	if self.prompt then
-		self.prompt:Destroy()
-		self.prompt = nil
-	end
-
-	self.model:SetAttribute("Completed", true)
 end
 
 function Ramen:Destroy()
-	if self.connections then
-		for _, conn in pairs(self.connections) do
-			conn:Disconnect()
-		end
+	if self.touchConn then
+		self.touchConn:Disconnect()
+		self.touchConn = nil
 	end
-
-	if self.prompt then
-		self.prompt:Destroy()
-		self.prompt = nil
-	end
-
-	self.model = nil
 end
 
 return Ramen
