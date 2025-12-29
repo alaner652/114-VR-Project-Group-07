@@ -39,7 +39,7 @@ function Ramen.new(model: Model)
 		self.required = self.total
 	end
 
-	self:_initPrompt()
+	self:_initTouch()
 
 	return self
 end
@@ -59,59 +59,62 @@ function Ramen:_initIngredients()
 	end
 end
 
-function Ramen:_initPrompt()
-	local bowl = self.model:FindFirstChild("Bowl")
-	if bowl and bowl:IsA("Model") then
-		bowl = bowl.PrimaryPart
+function Ramen:_initTouch()
+	local bowlModel = self.model
+	if not bowlModel or not bowlModel:IsA("Model") then
+		warn("Bowl model not found")
+		return
 	end
 
-	local prompt = self.prompt
-	prompt.ObjectText = self.model.Name
-	prompt.ActionText = "Add Ingredient"
-	prompt.MaxActivationDistance = 4
-	prompt.RequiresLineOfSight = false
-	prompt.Parent = bowl
-
-	local function updatePromptEnabled()
-		local currentPrompt = self.prompt
-		if not currentPrompt then
-			return
-		end
-
-		local isBeingDragged = self.model:GetAttribute("BeingDragged")
-		currentPrompt.Enabled = isBeingDragged ~= true
+	local bowlPart = bowlModel.PrimaryPart
+	if not bowlPart then
+		warn("Bowl has no PrimaryPart")
+		return
 	end
 
-	updatePromptEnabled()
-	local beingDraggedChanged = self.model:GetAttributeChangedSignal("BeingDragged"):Connect(updatePromptEnabled)
-	self.connections["BeingDraggedChanged"] = beingDraggedChanged
+	local debounce = false
 
-	local Triggered
-	Triggered = prompt.Triggered:Connect(function(player)
-		local dragged = GetDraggingObject:Invoke(player)
-		if not dragged then
+	local connection
+	connection = bowlPart.Touched:Connect(function(hit)
+		if debounce then
 			return
 		end
 
-		local ingredient = dragged:FindFirstAncestorOfClass("Model")
-		if not ingredient or not self.recipe[ingredient.Name] then
+		local ingredient = hit:FindFirstAncestorOfClass("Model")
+		if not ingredient then
 			return
 		end
+
+		if not self.recipe[ingredient.Name] then
+			return
+		end
+
+		if ingredient:GetAttribute("BeingDragged") ~= true then
+			return
+		end
+
+		debounce = true
 
 		if ingredient.Name == "Soup" then
 			if ingredient:GetAttribute("Active") ~= true then
+				debounce = false
 				return
 			end
 
 			ingredient:SetAttribute("Active", false)
 		else
-			ReleaseDraggingObject:Invoke(player)
+			ReleaseDraggingObject:Invoke()
 			ingredient:Destroy()
 		end
 
 		self:_unlock(ingredient.Name)
+
+		task.delay(0.2, function()
+			debounce = false
+		end)
 	end)
-	self.connections["PromptTriggered"] = Triggered
+
+	self.connections["BowlTouched"] = connection
 end
 
 function Ramen:_unlock(name: string)
