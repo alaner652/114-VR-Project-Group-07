@@ -48,7 +48,7 @@ local function isBeingDragged(instance: Instance): boolean
 	local model = getRootModel(instance)
 	if not model then
 		return false
-	 end
+	end
 
 	return model:GetAttribute("BeingDragged") == true
 end
@@ -107,13 +107,18 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
 		return
 	end
+
+	if state == DragState.Dragging then
+		dropObject()
+		return
+	end
+
 	if state ~= DragState.Hovering or not target then
 		return
 	end
 
 	local candidate = target
 	if dragRemote:InvokeServer(candidate, true) then
-		-- target might be destroyed between hover and pickup
 		if not candidate or not candidate.Parent then
 			return
 		end
@@ -130,13 +135,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
 
 		state = DragState.Dragging
 	end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-		return
-	end
-	dropObject()
 end)
 
 local function getBaseCFrame(): CFrame
