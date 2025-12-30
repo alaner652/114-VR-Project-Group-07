@@ -14,22 +14,6 @@ local function getRoot(instance)
 	return instance:FindFirstAncestorOfClass("Model") or instance
 end
 
-local function setCollisionGroupForRoot(root, groupName)
-	if not root then
-		return
-	end
-
-	if root:IsA("BasePart") then
-		root.CollisionGroup = groupName
-	end
-
-	for _, inst in ipairs(root:GetDescendants()) do
-		if inst:IsA("BasePart") then
-			inst.CollisionGroup = groupName
-		end
-	end
-end
-
 local function stopDrag(player: Player)
 	local current = PlayerDragging[player]
 	if not current then
@@ -40,7 +24,6 @@ local function stopDrag(player: Player)
 
 	if current:IsDescendantOf(workspace) and root then
 		current:SetNetworkOwner(nil)
-		setCollisionGroupForRoot(root, "Default")
 		root:SetAttribute("BeingDragged", false)
 	end
 
@@ -58,7 +41,6 @@ local function startDrag(player: Player, object: BasePart)
 	end
 
 	object:SetNetworkOwner(player)
-	setCollisionGroupForRoot(root, "Draggable")
 	root:SetAttribute("BeingDragged", true)
 	PlayerDragging[player] = object
 
@@ -66,6 +48,7 @@ local function startDrag(player: Player, object: BasePart)
 end
 
 DragRequest.OnServerInvoke = function(player: Player, object: BasePart?, requestingPickup: boolean)
+	--print("DragRequest received from", player.Name, "requestingPickup =", requestingPickup, "object =", object)
 	if requestingPickup then
 		if not object then
 			return false

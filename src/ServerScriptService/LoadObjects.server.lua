@@ -49,6 +49,7 @@ for tag in pairs(registry) do
 	end
 
 	CollectionService:GetInstanceAddedSignal(tag):Connect(function(model)
+		print("Added", tag, model)
 		init(tag, model)
 	end)
 

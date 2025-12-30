@@ -17,6 +17,8 @@ local DragState = {
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 local dragRemote = ReplicatedStorage:WaitForChild("DragRequest")
+local ForcePickupRemote = ReplicatedStorage:WaitForChild("ForcePickup")
+
 local dragTargetAttachment: Attachment = workspace.Terrain:WaitForChild("DragTarget")
 
 local state = DragState.Idle
@@ -48,7 +50,7 @@ local function isBeingDragged(instance: Instance): boolean
 	local model = getRootModel(instance)
 	if not model then
 		return false
-	 end
+	end
 
 	return model:GetAttribute("BeingDragged") == true
 end
@@ -104,16 +106,22 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then
 		return
 	end
+
 	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
 		return
 	end
+
+	if state == DragState.Dragging then
+		dropObject()
+		return
+	end
+
 	if state ~= DragState.Hovering or not target then
 		return
 	end
 
 	local candidate = target
 	if dragRemote:InvokeServer(candidate, true) then
-		-- target might be destroyed between hover and pickup
 		if not candidate or not candidate.Parent then
 			return
 		end
@@ -132,11 +140,31 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
-UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+ForcePickupRemote.OnClientEvent:Connect(function(object: Part)
+	if state == DragState.Dragging then
+		dropObject()
 		return
 	end
-	dropObject()
+	local candidate = object
+	if dragRemote:InvokeServer(candidate, true) then
+		print("Server approved force pickup")
+		if not candidate or not candidate.Parent then
+			return
+		end
+
+		grabbedObject = candidate
+		dragAttachment = getOrCreateDragAttachment(grabbedObject)
+		if not dragAttachment then
+			dropObject()
+			return
+		end
+
+		script.AlignOrientation.Attachment0 = dragAttachment
+		script.AlignPosition.Attachment0 = dragAttachment
+
+		state = DragState.Dragging
+		setHighlight(candidate)
+	end
 end)
 
 local function getBaseCFrame(): CFrame
@@ -159,6 +187,7 @@ RunService.RenderStepped:Connect(function()
 	local result = workspace:Raycast(ray.Origin, ray.Direction * MAX_DISTANCE, rayParams)
 
 	if result and result.Instance and result.Instance:HasTag("Draggable") then
+		print("Raycast result:", result.Instance)
 		if isBeingDragged(result.Instance) then
 			target = nil
 			state = DragState.Idle

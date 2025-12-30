@@ -10,11 +10,7 @@
     },
 
     "ServerStorage": {
-      "$className": "ServerStorage",
-      "Prefab": {
-        "$className": "Folder",
-        "$path": "assets/ServerStorage/Prefab"
-      }
+      "$className": "ServerStorage"
     },
 
     "StarterPlayer": {

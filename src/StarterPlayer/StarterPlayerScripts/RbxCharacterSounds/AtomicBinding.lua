@@ -58,8 +58,8 @@ function AtomicBinding.new(manifest, boundFn)
 	local rootInstToManifest = {} -- { [root] -> { [alias] -> instance } }
 
 	local parsedManifest = {} -- { [alias] = {Name, ...} }
-	local manifestSizeTarget = 1 -- Add 1 because root isn't explicitly on the manifest	
-	
+	local manifestSizeTarget = 1 -- Add 1 because root isn't explicitly on the manifest
+
 	for alias, rawPath in pairs(manifest) do
 		parsedManifest[alias] = parsePath(rawPath)
 		manifestSizeTarget += 1
@@ -69,7 +69,7 @@ function AtomicBinding.new(manifest, boundFn)
 		_boundFn = boundFn,
 		_parsedManifest = parsedManifest,
 		_manifestSizeTarget = manifestSizeTarget,
-		
+
 		_dtorMap = dtorMap,
 		_connections = connections,
 		_rootInstToRootNode = rootInstToRootNode,
@@ -80,7 +80,7 @@ end
 function AtomicBinding:_startBoundFn(root, resolvedManifest)
 	local boundFn = self._boundFn
 	local dtorMap = self._dtorMap
-	
+
 	local oldDtor = dtorMap[root]
 	if oldDtor then
 		oldDtor()
@@ -95,7 +95,7 @@ end
 
 function AtomicBinding:_stopBoundFn(root)
 	local dtorMap = self._dtorMap
-	
+
 	local dtor = dtorMap[root]
 	if dtor then
 		dtor()
@@ -105,12 +105,12 @@ end
 
 function AtomicBinding:bindRoot(root)
 	debug.profilebegin("AtomicBinding:BindRoot")
-	
+
 	local parsedManifest = self._parsedManifest
 	local rootInstToRootNode = self._rootInstToRootNode
 	local rootInstToManifest = self._rootInstToManifest
 	local manifestSizeTarget = self._manifestSizeTarget
-	
+
 	assert(rootInstToManifest[root] == nil)
 
 	local resolvedManifest = {}
@@ -142,7 +142,6 @@ function AtomicBinding:bindRoot(root)
 				end
 
 				childNode.alias = alias
-
 			else
 				childNode.children = childNode.children or {}
 				childNode.connections = childNode.connections or {}
@@ -229,14 +228,14 @@ function AtomicBinding:bindRoot(root)
 	debug.profilebegin("ResolveTree")
 	processNode(rootNode)
 	debug.profileend() -- ResolveTree
-	
+
 	debug.profileend() -- AtomicBinding:BindRoot
 end
 
 function AtomicBinding:unbindRoot(root)
 	local rootInstToRootNode = self._rootInstToRootNode
 	local rootInstToManifest = self._rootInstToManifest
-	
+
 	self:_stopBoundFn(root)
 
 	local rootNode = rootInstToRootNode[root]

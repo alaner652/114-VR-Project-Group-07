@@ -1,5 +1,4 @@
 local ServerScriptService = game:GetService("ServerScriptService")
-
 local GetDraggingObject = ServerScriptService:WaitForChild("GetDraggingObject")
 
 local SoupPot = {}
