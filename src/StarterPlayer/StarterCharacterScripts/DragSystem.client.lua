@@ -187,6 +187,7 @@ RunService.RenderStepped:Connect(function()
 	local result = workspace:Raycast(ray.Origin, ray.Direction * MAX_DISTANCE, rayParams)
 
 	if result and result.Instance and result.Instance:HasTag("Draggable") then
+		print("Raycast result:", result.Instance)
 		if isBeingDragged(result.Instance) then
 			target = nil
 			state = DragState.Idle

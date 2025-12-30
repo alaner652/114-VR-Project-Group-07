@@ -44,9 +44,7 @@ function Spawn:_init()
 		local newObject = ingredient:Clone()
 		newObject.Parent = workspace.SpawnedObjects
 
-		task.wait(0.25)
-
-		ForcePickupRemote:FireClient(player, newObject.PrimaryPart)
+		task.wait(0.1)
 
 		local targetPos = hrp.Position + hrp.CFrame.LookVector * 3 + Vector3.new(0, 1, 0)
 		local targetCF = CFrame.new(targetPos)
@@ -56,6 +54,8 @@ function Spawn:_init()
 		else
 			newObject:PivotTo(targetCF)
 		end
+
+		ForcePickupRemote:FireClient(player, newObject.PrimaryPart)
 	end)
 end
 

@@ -157,6 +157,12 @@ function Ramen:_unlock(key: string)
 		end
 	end)
 
+	for _, inst in ipairs(ingredient:GetDescendants()) do
+		if inst:IsA("ParticleEmitter") or inst:IsA("Beam") or inst:IsA("Trail") then
+			inst.Enabled = true
+		end
+	end
+
 	self.unlocked[key] = true
 	self.unlockedCount += 1
 

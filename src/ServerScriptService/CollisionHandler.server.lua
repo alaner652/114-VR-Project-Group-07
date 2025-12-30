@@ -32,7 +32,7 @@ local function setCollisionGroupForModel(model: Model, groupName: string)
 		return
 	end
 
-	print("Setting collision group:", model.Name, "->", groupName)
+	--print("Setting collision group:", model.Name, "->", groupName)
 
 	for _, inst in ipairs(model:GetDescendants()) do
 		if inst:IsA("BasePart") then
