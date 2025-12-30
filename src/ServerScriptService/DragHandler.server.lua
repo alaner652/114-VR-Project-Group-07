@@ -48,6 +48,7 @@ local function startDrag(player: Player, object: BasePart)
 end
 
 DragRequest.OnServerInvoke = function(player: Player, object: BasePart?, requestingPickup: boolean)
+	print("DragRequest received from", player.Name, "requestingPickup =", requestingPickup, "object =", object)
 	if requestingPickup then
 		if not object then
 			return false

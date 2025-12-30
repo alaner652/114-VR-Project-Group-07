@@ -17,6 +17,8 @@ local DragState = {
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 local dragRemote = ReplicatedStorage:WaitForChild("DragRequest")
+local ForcePickupRemote = ReplicatedStorage:WaitForChild("ForcePickup")
+
 local dragTargetAttachment: Attachment = workspace.Terrain:WaitForChild("DragTarget")
 
 local state = DragState.Idle
@@ -104,6 +106,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then
 		return
 	end
+
 	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
 		return
 	end
@@ -134,6 +137,33 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		script.AlignPosition.Attachment0 = dragAttachment
 
 		state = DragState.Dragging
+	end
+end)
+
+ForcePickupRemote.OnClientEvent:Connect(function(object: Part)
+	if state == DragState.Dragging then
+		dropObject()
+		return
+	end
+	local candidate = object
+	if dragRemote:InvokeServer(candidate, true) then
+		print("Server approved force pickup")
+		if not candidate or not candidate.Parent then
+			return
+		end
+
+		grabbedObject = candidate
+		dragAttachment = getOrCreateDragAttachment(grabbedObject)
+		if not dragAttachment then
+			dropObject()
+			return
+		end
+
+		script.AlignOrientation.Attachment0 = dragAttachment
+		script.AlignPosition.Attachment0 = dragAttachment
+
+		state = DragState.Dragging
+		setHighlight(candidate)
 	end
 end)
 
