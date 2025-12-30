@@ -24,6 +24,8 @@ function Knife:_initTouched()
 			return
 		end
 
+		print("Knife cut:", ingredient.Name)
+
 		if ingredient.Name == "UnCutPork" then
 			local oldCF = ingredient.PrimaryPart.CFrame
 
@@ -38,6 +40,26 @@ function Knife:_initTouched()
 			local newNoodles = game.ServerStorage.Ingredients:FindFirstChild("Noodles"):Clone()
 			newNoodles:SetPrimaryPartCFrame(oldCF * CFrame.new(0, 1, 0))
 			newNoodles.Parent = ingredient.Parent
+
+			ingredient:Destroy()
+		elseif ingredient.Name == "GreenOnion" then
+			local oldCF = ingredient.PrimaryPart.CFrame
+
+			for i = 1, 3 do
+				local newOnion = game.ServerStorage.Ingredients:FindFirstChild("ChoppedGreenOnion"):Clone()
+				newOnion:SetPrimaryPartCFrame(oldCF * CFrame.new(0, 0.5 * i, 0))
+				newOnion.Parent = ingredient.Parent
+			end
+
+			ingredient:Destroy()
+		elseif ingredient.Name == "Egg" then
+			local oldCF = ingredient.PrimaryPart.CFrame
+
+			for i = 1, 2 do
+				local newOnion = game.ServerStorage.Ingredients:FindFirstChild("CutEgg"):Clone()
+				newOnion:SetPrimaryPartCFrame(oldCF * CFrame.new(0, 0.5 * i, 0))
+				newOnion.Parent = ingredient.Parent
+			end
 
 			ingredient:Destroy()
 		end

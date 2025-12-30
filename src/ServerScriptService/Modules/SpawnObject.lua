@@ -8,7 +8,6 @@ function Spawn.new(Model: BasePart)
 	}, Spawn)
 
 	self:_init()
-
 	return self
 end
 
@@ -17,7 +16,7 @@ function Spawn:_init()
 	clickDetector.MaxActivationDistance = 10
 	clickDetector.Parent = self.model
 
-	self.connection = clickDetector.MouseClick:Connect(function()
+	self.connection = clickDetector.MouseClick:Connect(function(player)
 		local spawnObjectName = self.model:GetAttribute("SpawnObject")
 		if not spawnObjectName then
 			return
@@ -28,11 +27,25 @@ function Spawn:_init()
 			return
 		end
 
+		local character = player.Character
+		if not character then
+			return
+		end
+
+		local hrp = character:FindFirstChild("HumanoidRootPart")
+		if not hrp then
+			return
+		end
+
 		local newObject = ingredient:Clone()
 		newObject.Parent = workspace.SpawnedObjects
 
+		local spawnCFrame = hrp.CFrame + hrp.CFrame.LookVector * 2 + Vector3.new(0, 0, 0)
+
 		if newObject.PrimaryPart then
-			newObject:SetPrimaryPartCFrame(self.model.PrimaryPart.CFrame * CFrame.new(0, 0, -1))
+			newObject:SetPrimaryPartCFrame(CFrame.new(spawnCFrame.Position))
+		else
+			newObject:PivotTo(CFrame.new(spawnCFrame.Position))
 		end
 	end)
 end
