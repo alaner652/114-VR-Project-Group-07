@@ -1,5 +1,18 @@
+local CollectionService = game:GetService("CollectionService")
+
 local Spawn = {}
 Spawn.__index = Spawn
+
+local function preparePhysics(model: Instance)
+	for _, inst in ipairs(model:GetDescendants()) do
+		if inst:IsA("BasePart") then
+			inst.Anchored = false
+			inst.CanCollide = true
+			inst.AssemblyLinearVelocity = Vector3.zero
+			inst.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
+end
 
 function Spawn.new(Model: BasePart)
 	local self = setmetatable({
@@ -38,14 +51,22 @@ function Spawn:_init()
 		end
 
 		local newObject = ingredient:Clone()
-		newObject.Parent = workspace.SpawnedObjects
+		newObject:SetAttribute("BeingDragged", false)
+		preparePhysics(newObject)
 
-		local spawnCFrame = hrp.CFrame + hrp.CFrame.LookVector * 2 + Vector3.new(0, 0, 0)
+		local targetPos = hrp.Position + hrp.CFrame.LookVector * 3 + Vector3.new(0, 1, 0)
+		local targetCF = CFrame.new(targetPos)
 
 		if newObject.PrimaryPart then
-			newObject:SetPrimaryPartCFrame(CFrame.new(spawnCFrame.Position))
+			newObject:SetPrimaryPartCFrame(targetCF)
 		else
-			newObject:PivotTo(CFrame.new(spawnCFrame.Position))
+			newObject:PivotTo(targetCF)
+		end
+
+		newObject.Parent = workspace.SpawnedObjects
+
+		for _, tag in ipairs(CollectionService:GetTags(ingredient)) do
+			CollectionService:AddTag(newObject, tag)
 		end
 	end)
 end
