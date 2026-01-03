@@ -15,7 +15,7 @@ local NPCFolder = ReplicatedStorage:WaitForChild("NPCs")
 local NPCSpawn = workspace:WaitForChild("NPCSystem"):WaitForChild("NPCSpawn")
 local NPCContainer = workspace:WaitForChild("NPCs")
 
-local LEAVE_TIME = 1
+local LEAVE_TIME = 120
 
 local AGENT_RADIUS = 3
 local AGENT_HEIGHT = 5
