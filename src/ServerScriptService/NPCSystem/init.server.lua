@@ -52,27 +52,6 @@ on("BatchTimeReached", function()
 	setState("Serving")
 end)
 
-local leavingNPCCount = 0
-
-on("NPCStartedLeaving", function()
-	leavingNPCCount += 1
-
-	if State == "Serving" then
-		setState("Leaving")
-	end
-end)
-
-on("NPCFinishedLeaving", function()
-	leavingNPCCount -= 1
-	if leavingNPCCount < 0 then
-		leavingNPCCount = 0
-	end
-
-	if leavingNPCCount == 0 then
-		setState("Serving")
-	end
-end)
-
 task.spawn(function()
 	while true do
 		task.wait(1)

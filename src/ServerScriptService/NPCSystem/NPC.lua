@@ -15,7 +15,7 @@ local NPCFolder = ReplicatedStorage:WaitForChild("NPCs")
 local NPCSpawn = workspace:WaitForChild("NPCSystem"):WaitForChild("NPCSpawn")
 local NPCContainer = workspace:WaitForChild("NPCs")
 
-local LEAVE_TIME = 120
+local LEAVE_TIME = 1
 
 local AGENT_RADIUS = 3
 local AGENT_HEIGHT = 5
@@ -135,17 +135,6 @@ local function spawnModel()
 	return model
 end
 
-local function disableNonRootCollisions(model)
-	if not model or not model.PrimaryPart then
-		return
-	end
-	for _, inst in ipairs(model:GetDescendants()) do
-		if inst:IsA("BasePart") and inst ~= model.PrimaryPart then
-			inst.CanCollide = false
-		end
-	end
-end
-
 local function computePath(fromPos, toPos)
 	-- always protected: never hard-crash caller
 	local ok, result = pcall(function()
@@ -217,8 +206,6 @@ function NPC.new(context)
 		self.destroyed = true
 		return self
 	end
-
-	disableNonRootCollisions(self.model)
 
 	-- spawn
 	self.model:SetPrimaryPartCFrame(NPCSpawn.CFrame)
