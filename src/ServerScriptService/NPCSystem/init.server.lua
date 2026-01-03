@@ -8,6 +8,8 @@ local emit = EventBus.emit
 local TablesFolder = workspace:WaitForChild("NPCSystem")
 
 local function findAvailableSeat()
+	local candidates = {}
+
 	for _, tableModel in ipairs(TablesFolder:GetChildren()) do
 		local seatsFolder = tableModel:FindFirstChild("Seats")
 		local hitbox = tableModel:FindFirstChild("Hitbox")
@@ -15,17 +17,23 @@ local function findAvailableSeat()
 		if seatsFolder and hitbox then
 			for _, seat in ipairs(seatsFolder:GetChildren()) do
 				if seat:IsA("BasePart") and not seat:GetAttribute("Active") then
-					seat:SetAttribute("Active", true)
-					return {
+					table.insert(candidates, {
 						seat = seat,
 						hitbox = hitbox,
 						table = tableModel,
-					}
+					})
 				end
 			end
 		end
 	end
-	return nil
+
+	if #candidates == 0 then
+		return nil
+	end
+
+	local choice = candidates[math.random(#candidates)]
+	choice.seat:SetAttribute("Active", true)
+	return choice
 end
 
 local State = "Idle"

@@ -1,19 +1,72 @@
+-- ============================================
+-- Services
+-- ============================================
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PathfindingService = game:GetService("PathfindingService")
 local RunService = game:GetService("RunService")
 
+-- ============================================
+-- Config
+-- ============================================
 local NPCFolder = ReplicatedStorage:WaitForChild("NPCs")
 local NPCSpawn = workspace:WaitForChild("NPCSystem"):WaitForChild("NPCSpawn")
 
-local LEAVE_TIME = 5
+local LEAVE_TIME = 180
 local AGENT_RADIUS = 3
 local AGENT_HEIGHT = 5
 
-local ENTRY_PATH_CACHE = {}
+-- ============================================
+-- Path Cache (LRU)
+-- ============================================
+local PATH_CACHE = {
+	maxSize = 20,
+	store = {}, -- key -> { path, lastUsed }
+	order = {}, -- key list
+}
 
-local NPC = {}
-NPC.__index = NPC
+local function makeKey(fromPos, toPos)
+	return string.format(
+		"%d_%d_%d|%d_%d_%d",
+		math.floor(fromPos.X),
+		math.floor(fromPos.Y),
+		math.floor(fromPos.Z),
+		math.floor(toPos.X),
+		math.floor(toPos.Y),
+		math.floor(toPos.Z)
+	)
+end
 
+local function getCachedPath(fromPos, toPos)
+	local key = makeKey(fromPos, toPos)
+	local entry = PATH_CACHE.store[key]
+	if entry then
+		entry.lastUsed = os.clock()
+		return entry.path
+	end
+	return nil
+end
+
+local function setCachedPath(fromPos, toPos, path)
+	local key = makeKey(fromPos, toPos)
+
+	if #PATH_CACHE.order >= PATH_CACHE.maxSize then
+		table.sort(PATH_CACHE.order, function(a, b)
+			return PATH_CACHE.store[a].lastUsed < PATH_CACHE.store[b].lastUsed
+		end)
+		local oldest = table.remove(PATH_CACHE.order, 1)
+		PATH_CACHE.store[oldest] = nil
+	end
+
+	PATH_CACHE.store[key] = {
+		path = path,
+		lastUsed = os.clock(),
+	}
+	table.insert(PATH_CACHE.order, key)
+end
+
+-- ============================================
+-- Utils
+-- ============================================
 local function spawnModel()
 	local rig = NPCFolder:FindFirstChild("Rig")
 	if not rig then
@@ -43,6 +96,15 @@ local function computePath(fromPos, toPos)
 	return points
 end
 
+-- ============================================
+-- NPC Class
+-- ============================================
+local NPC = {}
+NPC.__index = NPC
+
+-- ============================================
+-- Constructor
+-- ============================================
 function NPC.new(context)
 	local self = setmetatable({}, NPC)
 
@@ -58,18 +120,21 @@ function NPC.new(context)
 	self.model:SetPrimaryPartCFrame(NPCSpawn.CFrame)
 	RunService.Heartbeat:Wait()
 
-	-- ⭐ Entry path cache（依 hitbox）
-	if ENTRY_PATH_CACHE[self.hitbox] then
-		self.entryPath = ENTRY_PATH_CACHE[self.hitbox]
-	else
-		self.entryPath = computePath(self.model.PrimaryPart.Position, self.hitbox.Position)
-		ENTRY_PATH_CACHE[self.hitbox] = self.entryPath
+	-- Entry Path（Cache）
+	self.entryPath = getCachedPath(self.model.PrimaryPart.Position, self.hitbox.Position)
+		or computePath(self.model.PrimaryPart.Position, self.hitbox.Position)
+
+	if self.entryPath then
+		setCachedPath(self.model.PrimaryPart.Position, self.hitbox.Position, self.entryPath)
 	end
 
 	self:_enterShop()
 	return self
 end
 
+-- ============================================
+-- Movement Core
+-- ============================================
 function NPC:_moveTo(pos)
 	local humanoid = self.model:FindFirstChildOfClass("Humanoid")
 	if not humanoid then
@@ -85,6 +150,10 @@ function NPC:_walkPathWithReplan(path, finalTarget)
 			return false
 		end
 
+		if (self.model.PrimaryPart.Position - pos).Magnitude < 1 then
+			continue
+		end
+
 		if not self:_moveTo(pos) then
 			local replanned = computePath(self.model.PrimaryPart.Position, finalTarget)
 			if replanned then
@@ -96,6 +165,9 @@ function NPC:_walkPathWithReplan(path, finalTarget)
 	return true
 end
 
+-- ============================================
+-- Enter Shop
+-- ============================================
 function NPC:_enterShop()
 	self.seat:SetAttribute("Active", true)
 
@@ -132,11 +204,15 @@ function NPC:_enterShop()
 	end)
 end
 
+-- ============================================
+-- Leave (Ignore C, Return via B → A)
+-- ============================================
 function NPC:startLeaving()
 	if self.isLeaving or self.destroyed then
 		return
 	end
 	self.isLeaving = true
+
 	if self.events then
 		self.events.emit("NPCStartedLeaving")
 	end
@@ -151,7 +227,8 @@ function NPC:startLeaving()
 		weld:Destroy()
 	end
 
-	self.model:SetPrimaryPartCFrame(self.hitbox.CFrame * CFrame.new(0, 0, -2))
+	self.model:SetPrimaryPartCFrame(self.hitbox.CFrame * CFrame.new(0, 0, 0))
+	RunService.Heartbeat:Wait()
 
 	if self.entryPath and #self.entryPath >= 2 then
 		local reverse = {}
@@ -173,6 +250,9 @@ function NPC:startLeaving()
 	self:Destroy()
 end
 
+-- ============================================
+-- Destroy
+-- ============================================
 function NPC:Destroy()
 	if self.destroyed then
 		return
