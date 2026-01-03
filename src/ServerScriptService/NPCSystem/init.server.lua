@@ -105,7 +105,7 @@ local nextInterval = math.random(MIN_INTERVAL, MAX_INTERVAL)
 
 task.spawn(function()
 	while true do
-		print("[FSM]", State, "->", State)
+		--print("[FSM]", State, "->", State)
 
 		task.wait(1)
 
