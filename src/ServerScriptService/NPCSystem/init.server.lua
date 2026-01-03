@@ -5,34 +5,7 @@ local NPC = require(script.NPC)
 local on = EventBus.on
 local emit = EventBus.emit
 
---------------------------------------------------
--- Leaving 狀態同步（只管「是否有人在離開」）
---------------------------------------------------
-local leavingNPCCount = 0
-
-on("NPCStartedLeaving", function()
-	leavingNPCCount += 1
-
-	if State == "Serving" then
-		setState("Leaving")
-	end
-end)
-
-on("NPCFinishedLeaving", function()
-	leavingNPCCount -= 1
-	if leavingNPCCount < 0 then
-		leavingNPCCount = 0
-	end
-
-	if leavingNPCCount == 0 then
-		setState("Serving")
-	end
-end)
-
---------------------------------------------------
--- Seat Allocation
---------------------------------------------------
-local TablesFolder = workspace:WaitForChild("Tables")
+local TablesFolder = workspace:WaitForChild("NPCSystem")
 
 local function findAvailableSeat()
 	for _, tableModel in ipairs(TablesFolder:GetChildren()) do
@@ -55,10 +28,7 @@ local function findAvailableSeat()
 	return nil
 end
 
---------------------------------------------------
--- FSM Core
---------------------------------------------------
-State = "Idle"
+local State = "Idle"
 
 function setState(newState)
 	if State == newState then
@@ -67,9 +37,6 @@ function setState(newState)
 	State = newState
 end
 
---------------------------------------------------
--- 開店（只負責啟動 Serving）
---------------------------------------------------
 on("BatchTimeReached", function()
 	if State ~= "Idle" then
 		return
@@ -77,9 +44,27 @@ on("BatchTimeReached", function()
 	setState("Serving")
 end)
 
---------------------------------------------------
--- Serving：持續補位（只要沒人在離開）
---------------------------------------------------
+local leavingNPCCount = 0
+
+on("NPCStartedLeaving", function()
+	leavingNPCCount += 1
+
+	if State == "Serving" then
+		setState("Leaving")
+	end
+end)
+
+on("NPCFinishedLeaving", function()
+	leavingNPCCount -= 1
+	if leavingNPCCount < 0 then
+		leavingNPCCount = 0
+	end
+
+	if leavingNPCCount == 0 then
+		setState("Serving")
+	end
+end)
+
 task.spawn(function()
 	while true do
 		task.wait(1)
@@ -100,14 +85,10 @@ task.spawn(function()
 			events = EventBus,
 		})
 
-		print("[Serving] Filled seat:", result.seat)
 		task.wait(math.random(1, 3))
 	end
 end)
 
---------------------------------------------------
--- Idle 啟動計時器（開店用）
---------------------------------------------------
 local MIN_INTERVAL = 1
 local MAX_INTERVAL = 1
 

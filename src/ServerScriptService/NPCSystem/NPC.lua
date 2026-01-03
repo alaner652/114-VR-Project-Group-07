@@ -1,66 +1,113 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local NPCFolder = ReplicatedStorage:WaitForChild("NPCs")
+local PathfindingService = game:GetService("PathfindingService")
+local RunService = game:GetService("RunService")
 
-local LEAVE_TIME = 120 -- 秒
+local NPCFolder = ReplicatedStorage:WaitForChild("NPCs")
+local NPCSpawn = workspace:WaitForChild("NPCSystem"):WaitForChild("NPCSpawn")
+
+local LEAVE_TIME = 5
+local AGENT_RADIUS = 3
+local AGENT_HEIGHT = 5
+
+local ENTRY_PATH_CACHE = {}
 
 local NPC = {}
 NPC.__index = NPC
 
---------------------------------------------------
--- Spawn NPC Model
---------------------------------------------------
 local function spawnModel()
-	local model = NPCFolder:FindFirstChild("Rig")
-	if not model then
-		warn("NPC model not found.")
+	local rig = NPCFolder:FindFirstChild("Rig")
+	if not rig then
+		return nil
+	end
+	local model = rig:Clone()
+	model.Parent = workspace:WaitForChild("NPCs")
+	return model
+end
+
+local function computePath(fromPos, toPos)
+	local path = PathfindingService:CreatePath({
+		AgentRadius = AGENT_RADIUS,
+		AgentHeight = AGENT_HEIGHT,
+		AgentCanJump = false,
+	})
+
+	path:ComputeAsync(fromPos, toPos)
+	if path.Status ~= Enum.PathStatus.Success then
 		return nil
 	end
 
-	local cloned = model:Clone()
-	cloned.Parent = workspace.NPCs
-	return cloned
+	local points = {}
+	for _, wp in ipairs(path:GetWaypoints()) do
+		table.insert(points, wp.Position)
+	end
+	return points
 end
 
---------------------------------------------------
--- Constructor
---------------------------------------------------
 function NPC.new(context)
 	local self = setmetatable({}, NPC)
 
 	self.seat = context.seat
 	self.hitbox = context.hitbox
 	self.events = context.events
-	self.model = spawnModel()
 
-	self:start()
+	self.model = spawnModel()
+	if not self.model or not self.model.PrimaryPart then
+		return self
+	end
+
+	self.model:SetPrimaryPartCFrame(NPCSpawn.CFrame)
+	RunService.Heartbeat:Wait()
+
+	-- ⭐ Entry path cache（依 hitbox）
+	if ENTRY_PATH_CACHE[self.hitbox] then
+		self.entryPath = ENTRY_PATH_CACHE[self.hitbox]
+	else
+		self.entryPath = computePath(self.model.PrimaryPart.Position, self.hitbox.Position)
+		ENTRY_PATH_CACHE[self.hitbox] = self.entryPath
+	end
+
+	self:_enterShop()
 	return self
 end
 
---------------------------------------------------
--- Start / Move to Seat
---------------------------------------------------
-function NPC:start()
-	if not self.model or not self.model.PrimaryPart then
-		warn("NPC model has no PrimaryPart")
-		return
-	end
-
-	self.model:SetPrimaryPartCFrame(workspace.NPCSpawn.CFrame + Vector3.new(0, 0, -5))
-
+function NPC:_moveTo(pos)
 	local humanoid = self.model:FindFirstChildOfClass("Humanoid")
 	if not humanoid then
-		return
+		return false
 	end
+	humanoid:MoveTo(pos)
+	return humanoid.MoveToFinished:Wait()
+end
 
+function NPC:_walkPathWithReplan(path, finalTarget)
+	for _, pos in ipairs(path) do
+		if self.destroyed then
+			return false
+		end
+
+		if not self:_moveTo(pos) then
+			local replanned = computePath(self.model.PrimaryPart.Position, finalTarget)
+			if replanned then
+				return self:_walkPathWithReplan(replanned, finalTarget)
+			end
+			return false
+		end
+	end
+	return true
+end
+
+function NPC:_enterShop()
 	self.seat:SetAttribute("Active", true)
-	humanoid:MoveTo(self.hitbox.Position)
+
+	task.spawn(function()
+		if self.entryPath then
+			self:_walkPathWithReplan(self.entryPath, self.hitbox.Position)
+		end
+	end)
 
 	local conn
 	conn = self.hitbox.Touched:Connect(function(part)
-		if not part:IsDescendantOf(self.model) then
-			return
-		end
-		if self.seated then
+		if not part:IsDescendantOf(self.model) or self.seated then
 			return
 		end
 		self.seated = true
@@ -69,73 +116,34 @@ function NPC:start()
 		weld.Name = "SeatWeld"
 		weld.Part0 = self.seat
 		weld.Part1 = self.model.PrimaryPart
-		weld.C0 = CFrame.new(0, 2, 0)
+		weld.C0 = CFrame.new(0, 3, 0)
 		weld.Parent = self.model.PrimaryPart
 
-		self:_startWaitingTimer()
+		local humanoid = self.model:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			humanoid.Sit = true
+		end
+
+		task.delay(LEAVE_TIME, function()
+			self:startLeaving()
+		end)
+
 		conn:Disconnect()
 	end)
 end
 
---------------------------------------------------
--- Countdown Display (每秒更新名字)
---------------------------------------------------
-function NPC:_updateCountdownDisplay(seconds)
-	if not self.model then
-		return
-	end
-
-	self.model.Name = tostring(seconds)
-end
-
---------------------------------------------------
--- Waiting Timer (逐秒倒數)
---------------------------------------------------
-function NPC:_startWaitingTimer()
-	if self.waiting then
-		return
-	end
-	self.waiting = true
-
-	task.spawn(function()
-		local remaining = LEAVE_TIME
-
-		while remaining > 0 do
-			if self.isLeaving or self.destroyed then
-				return
-			end
-
-			self:_updateCountdownDisplay(remaining)
-
-			task.wait(1)
-			remaining -= 1
-		end
-
-		-- 顯示 0
-		self:_updateCountdownDisplay(0)
-
-		if not self.isLeaving and not self.destroyed then
-			self:startLeaving()
-		end
-	end)
-end
-
---------------------------------------------------
--- Start Leaving
---------------------------------------------------
 function NPC:startLeaving()
-	if self.isLeaving then
+	if self.isLeaving or self.destroyed then
 		return
 	end
 	self.isLeaving = true
-
 	if self.events then
 		self.events.emit("NPCStartedLeaving")
 	end
 
 	local humanoid = self.model:FindFirstChildOfClass("Humanoid")
-	if not humanoid then
-		return
+	if humanoid then
+		humanoid.Sit = false
 	end
 
 	local weld = self.model.PrimaryPart:FindFirstChild("SeatWeld")
@@ -143,33 +151,44 @@ function NPC:startLeaving()
 		weld:Destroy()
 	end
 
-	humanoid:MoveTo(workspace.NPCSpawn.Position)
+	self.model:SetPrimaryPartCFrame(self.hitbox.CFrame * CFrame.new(0, 0, -2))
 
-	local conn
-	conn = humanoid.MoveToFinished:Connect(function()
-		conn:Disconnect()
-
-		if self.events then
-			self.events.emit("NPCFinishedLeaving")
+	if self.entryPath and #self.entryPath >= 2 then
+		local reverse = {}
+		for i = #self.entryPath - 1, 1, -1 do
+			table.insert(reverse, self.entryPath[i])
 		end
 
-		self:Destroy()
-	end)
+		if self:_walkPathWithReplan(reverse, NPCSpawn.Position) then
+			self:Destroy()
+			return
+		end
+	end
+
+	local fallback = computePath(self.model.PrimaryPart.Position, NPCSpawn.Position)
+	if fallback then
+		self:_walkPathWithReplan(fallback, NPCSpawn.Position)
+	end
+
+	self:Destroy()
 end
 
---------------------------------------------------
--- Destroy NPC
---------------------------------------------------
 function NPC:Destroy()
 	if self.destroyed then
 		return
 	end
 	self.destroyed = true
 
-	self.seat:SetAttribute("Active", false)
+	if self.seat then
+		self.seat:SetAttribute("Active", false)
+	end
 
 	if self.model then
 		self.model:Destroy()
+	end
+
+	if self.events then
+		self.events.emit("NPCFinishedLeaving")
 	end
 end
 
