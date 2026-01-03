@@ -30,6 +30,7 @@ local WAYPOINT_SKIP_DIST = 1.0 -- skip waypoint if already close
 local MOVE_TIMEOUT = 6 -- seconds max waiting for a single MoveToFinished
 local YIELD_ON_SPAWN = true -- give physics one heartbeat after spawn
 local LEAVE_OFFSET = CFrame.new(0, 0, -2) -- teleport offset at leaving (from hitbox)
+local SEAT_REACH_TIMEOUT = 20 -- seconds before abandoning unseated NPC
 
 -- ============================================
 -- LRU Path Cache (no lastUsed, no nil crash)
@@ -205,10 +206,15 @@ function NPC.new(context)
 	self.isLeaving = false
 	self.seated = false
 	self.waiting = false
+	self._hitboxConn = nil
 
 	self.model = spawnModel()
 	if not self.model or not self.model.PrimaryPart then
 		warn("[NPC] spawnModel failed or no PrimaryPart")
+		if self.seat then
+			self.seat:SetAttribute("Active", false)
+		end
+		self.destroyed = true
 		return self
 	end
 
@@ -358,12 +364,24 @@ function NPC:_enterShop()
 		end
 	end)
 
+	-- timeout in case NPC never reaches seat (prevents seat lock buildup)
+	task.spawn(function()
+		local t0 = os.clock()
+		while not self.destroyed and not self.seated do
+			if os.clock() - t0 >= SEAT_REACH_TIMEOUT then
+				self:Destroy(false)
+				return
+			end
+			task.wait(1)
+		end
+	end)
+
 	-- seat detection via hitbox touch
-	local conn
-	conn = self.hitbox.Touched:Connect(function(part)
+	self._hitboxConn = self.hitbox.Touched:Connect(function(part)
 		if self.destroyed then
-			if conn then
-				conn:Disconnect()
+			if self._hitboxConn then
+				self._hitboxConn:Disconnect()
+				self._hitboxConn = nil
 			end
 			return
 		end
@@ -391,8 +409,9 @@ function NPC:_enterShop()
 
 		self:_startWaitingTimer()
 
-		if conn then
-			conn:Disconnect()
+		if self._hitboxConn then
+			self._hitboxConn:Disconnect()
+			self._hitboxConn = nil
 		end
 	end)
 end
@@ -485,11 +504,16 @@ end
 -- ============================================
 -- Destroy
 -- ============================================
-function NPC:Destroy()
+function NPC:Destroy(emitLeavingFinished)
 	if self.destroyed then
 		return
 	end
 	self.destroyed = true
+
+	if self._hitboxConn then
+		self._hitboxConn:Disconnect()
+		self._hitboxConn = nil
+	end
 
 	-- free seat
 	if self.seat then
@@ -502,7 +526,12 @@ function NPC:Destroy()
 		self.model = nil
 	end
 
-	safeEmit(self.events, "NPCFinishedLeaving")
+	if emitLeavingFinished == nil then
+		emitLeavingFinished = self.isLeaving
+	end
+	if emitLeavingFinished then
+		safeEmit(self.events, "NPCFinishedLeaving")
+	end
 end
 
 return NPC

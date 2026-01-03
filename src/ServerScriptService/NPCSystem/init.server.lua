@@ -38,11 +38,10 @@ end
 
 local State = "Idle"
 
-local function setState(newState)
+function setState(newState)
 	if State == newState then
 		return
 	end
-	print("[FSM]", State, "->", newState)
 	State = newState
 end
 
@@ -51,6 +50,27 @@ on("BatchTimeReached", function()
 		return
 	end
 	setState("Serving")
+end)
+
+local leavingNPCCount = 0
+
+on("NPCStartedLeaving", function()
+	leavingNPCCount += 1
+
+	if State == "Serving" then
+		setState("Leaving")
+	end
+end)
+
+on("NPCFinishedLeaving", function()
+	leavingNPCCount -= 1
+	if leavingNPCCount < 0 then
+		leavingNPCCount = 0
+	end
+
+	if leavingNPCCount == 0 then
+		setState("Serving")
+	end
 end)
 
 task.spawn(function()
@@ -78,13 +98,15 @@ task.spawn(function()
 end)
 
 local MIN_INTERVAL = 1
-local MAX_INTERVAL = 120
+local MAX_INTERVAL = 1
 
 local lastBatchTime = os.clock()
 local nextInterval = math.random(MIN_INTERVAL, MAX_INTERVAL)
 
 task.spawn(function()
 	while true do
+		print("[FSM]", State, "->", State)
+
 		task.wait(1)
 
 		if State ~= "Idle" then
