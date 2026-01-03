@@ -1,7 +1,6 @@
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local SimplePath = require(ReplicatedStorage.Packages.SimplePath)
+local PathfindingService = game:GetService("PathfindingService")
 
-local NPCFolder = ReplicatedStorage:WaitForChild("NPCs")
+local NPCFolder = game:GetService("ReplicatedStorage"):WaitForChild("NPCs")
 local NPCSpawn = workspace:WaitForChild("NPCSystem"):WaitForChild("NPCSpawn")
 local NPCContainer = workspace:WaitForChild("NPCs")
 
@@ -23,66 +22,95 @@ local function spawnModel()
 	return model
 end
 
+local function reverseArraySkipLast(arr)
+	local reversed = {}
+	for i = #arr - 1, 1, -1 do
+		reversed[#reversed + 1] = arr[i]
+	end
+	return reversed
+end
+
 function NPC.new(context)
 	local self = setmetatable({
 		seat = context.seat,
 		hitbox = context.hitbox,
+
 		model = spawnModel(),
-		path = nil,
+		humanoid = nil,
+
+		enterWaypoints = nil,
 		seated = false,
 	}, NPC)
 
+	self.humanoid = self.model:FindFirstChildOfClass("Humanoid")
 	self.model:SetPrimaryPartCFrame(NPCSpawn.CFrame)
-	self:_enterShop()
 
+	self:_enterShop()
 	return self
 end
 
-function NPC:_createPath(onReached)
-	if self.path then
-		self.path:Destroy()
-		self.path = nil
+function NPC:_computePath(startPos, goalPos)
+	local path = PathfindingService:CreatePath(PATH_PARAMS)
+	path:ComputeAsync(startPos, goalPos)
+
+	if path.Status ~= Enum.PathStatus.Success then
+		return nil
 	end
 
-	local path = SimplePath.new(self.model, PATH_PARAMS)
-	path.Visualize = true
-
-	path.Reached:Once(function()
-		if onReached then
-			onReached()
-		end
-	end)
-
-	path.Blocked:Connect(function()
-		path:Run(path.Target)
-	end)
-
-	self.path = path
-	return path
+	return path:GetWaypoints()
 end
 
-function NPC:_moveTo(goal, onReached)
-	local path = self:_createPath(onReached)
-	path:Run(goal)
+function NPC:_followWaypoints(waypoints, onFinished)
+	task.spawn(function()
+		for _, wp in ipairs(waypoints) do
+			if not self.humanoid or not self.humanoid.Parent then
+				return
+			end
+
+			self.humanoid:MoveTo(wp.Position)
+			local reached = self.humanoid.MoveToFinished:Wait()
+
+			if not reached then
+				return
+			end
+		end
+
+		if onFinished then
+			onFinished()
+		end
+	end)
 end
 
 function NPC:_enterShop()
-	self:_moveTo(self.hitbox.Position, function()
+	local waypoints = self:_computePath(NPCSpawn.Position, self.hitbox.Position)
+
+	if not waypoints then
+		self:Destroy()
+		return
+	end
+
+	self.enterWaypoints = waypoints
+
+	self:_followWaypoints(waypoints, function()
 		if self.seated then
 			return
 		end
 		self.seated = true
 
+		local root = self.model.PrimaryPart
+		if not root then
+			return
+		end
+
 		local weld = Instance.new("Motor6D")
 		weld.Name = "SeatWeld"
 		weld.Part0 = self.seat
-		weld.Part1 = self.model.PrimaryPart
+		weld.Part1 = root
 		weld.C0 = CFrame.new(0, 3, 0)
-		weld.Parent = self.model.PrimaryPart
+		weld.Parent = root
 
-		local humanoid = self.model:FindFirstChildOfClass("Humanoid")
-		if humanoid then
-			humanoid.Sit = true
+		if self.humanoid then
+			self.humanoid.Sit = true
 		end
 
 		task.delay(LEAVE_TIME, function()
@@ -104,28 +132,27 @@ function NPC:startLeaving()
 		weld:Destroy()
 	end
 
-	local humanoid = self.model:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		humanoid.Sit = false
+	if self.humanoid then
+		self.humanoid.Sit = false
 	end
 
-	root.CFrame = self.hitbox.CFrame
+	self.model:SetPrimaryPartCFrame(self.hitbox.CFrame)
 
-	self:_moveTo(NPCSpawn.Position, function()
+	local backWaypoints = reverseArraySkipLast(self.enterWaypoints)
+
+	self:_followWaypoints(backWaypoints, function()
 		self:Destroy()
 	end)
 end
 
 function NPC:Destroy()
-	if self.path then
-		self.path:Destroy()
-		self.path = nil
-	end
-
 	if self.model then
 		self.model:Destroy()
 		self.model = nil
 	end
+
+	self.enterWaypoints = nil
+	self.humanoid = nil
 
 	setmetatable(self, nil)
 end
