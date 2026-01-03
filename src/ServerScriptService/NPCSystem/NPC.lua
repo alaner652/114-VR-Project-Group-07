@@ -219,6 +219,9 @@ function NPC.new(context)
 		self.seat:SetAttribute("Active", true)
 	end
 
+	-- clear name
+	self.model.Name = ""
+
 	-- PRE-COMPUTE entry path using stable fromPos to maximize cache hit:
 	-- use NPCSpawn.Position instead of current root.Position (reduces key diversity)
 	self.entryPath = getOrComputePath(NPCSpawn.Position, self.hitbox.Position)
@@ -423,7 +426,7 @@ function NPC:_startWaitingTimer()
 		end
 
 		if self.model then
-			self.model.Name = "0"
+			self.model.Name = ""
 		end
 
 		self:startLeaving()
