@@ -7,6 +7,8 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PathfindingService = game:GetService("PathfindingService")
 local RunService = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 -- ============================================
 -- Config
@@ -16,6 +18,7 @@ local NPCSpawn = workspace:WaitForChild("NPCSystem"):WaitForChild("NPCSpawn")
 local NPCContainer = workspace:WaitForChild("NPCs")
 
 local LEAVE_TIME = 120
+local FOOD_LEAVE_TIME = 20
 
 local AGENT_RADIUS = 3
 local AGENT_HEIGHT = 5
@@ -31,6 +34,8 @@ local MOVE_TIMEOUT = 6 -- seconds max waiting for a single MoveToFinished
 local YIELD_ON_SPAWN = true -- give physics one heartbeat after spawn
 local LEAVE_OFFSET = CFrame.new(0, 0, -2) -- teleport offset at leaving (from hitbox)
 local SEAT_REACH_TIMEOUT = 20 -- seconds before abandoning unseated NPC
+
+local ReleaseDraggingObject = ServerScriptService:WaitForChild("ReleaseDraggingObject")
 
 -- ============================================
 -- LRU Path Cache (no lastUsed, no nil crash)
@@ -101,6 +106,44 @@ end
 -- ============================================
 -- Utils
 -- ============================================
+local function findRootModel(inst: Instance): Model?
+	if not inst then
+		return nil
+	end
+	return inst:FindFirstAncestorOfClass("Model")
+end
+
+local function ensurePrimaryPart(model: Model): BasePart?
+	if not model then
+		return nil
+	end
+	if model.PrimaryPart then
+		return model.PrimaryPart
+	end
+
+	local root = model:FindFirstChildWhichIsA("BasePart", true)
+	if root then
+		model.PrimaryPart = root
+	end
+	return root
+end
+
+local function removeDraggableTags(model: Model)
+	if not model then
+		return
+	end
+
+	if CollectionService:HasTag(model, "Draggable") then
+		CollectionService:RemoveTag(model, "Draggable")
+	end
+
+	for _, inst in ipairs(model:GetDescendants()) do
+		if CollectionService:HasTag(inst, "Draggable") then
+			CollectionService:RemoveTag(inst, "Draggable")
+		end
+	end
+end
+
 local function safeEmit(events, name, payload)
 	if not events then
 		return
@@ -196,6 +239,11 @@ function NPC.new(context)
 	self.seated = false
 	self.waiting = false
 	self._hitboxConn = nil
+	self._foodConn = nil
+	self._foodWeld = nil
+	self.foodHitbox = nil
+	self.foodModel = nil
+	self.remaining = nil
 
 	self.model = spawnModel()
 	if not self.model or not self.model.PrimaryPart then
@@ -227,6 +275,7 @@ function NPC.new(context)
 	self.entryPath = getOrComputePath(NPCSpawn.Position, self.hitbox.Position)
 
 	self:_enterShop()
+	self:_bindFoodHitbox()
 
 	return self
 end
@@ -406,6 +455,92 @@ function NPC:_enterShop()
 	end)
 end
 
+-- ============================================
+-- Food Delivery
+-- ============================================
+function NPC:_bindFoodHitbox()
+	if self.destroyed or not self.model then
+		return
+	end
+
+	local hitbox = self.model:FindFirstChild("Hitbox", true)
+	if not hitbox or not hitbox:IsA("BasePart") then
+		return
+	end
+
+	self.foodHitbox = hitbox
+	self._foodConn = hitbox.Touched:Connect(function(part)
+		self:_onFoodTouched(part)
+	end)
+end
+
+function NPC:_onFoodTouched(part: BasePart)
+	if self.destroyed or self.isLeaving then
+		return
+	end
+	if not self.seated then
+		return
+	end
+	if not part or not part:IsA("BasePart") then
+		return
+	end
+	if self.model and part:IsDescendantOf(self.model) then
+		return
+	end
+
+	local root = findRootModel(part)
+	if not root then
+		return
+	end
+	if self.foodModel and root == self.foodModel then
+		return
+	end
+	if not CollectionService:HasTag(root, "Ramen") then
+		return
+	end
+
+	self:_attachFood(root)
+end
+
+function NPC:_attachFood(model: Model)
+	if self.destroyed or self.isLeaving then
+		return
+	end
+	if not self.foodHitbox or not self.foodHitbox:IsA("BasePart") then
+		return
+	end
+
+	local rootPart = ensurePrimaryPart(model)
+	if not rootPart then
+		return
+	end
+
+	self.foodModel = model
+
+	local owner = rootPart:GetNetworkOwner()
+	if owner then
+		ReleaseDraggingObject:Invoke(owner)
+	end
+	model:SetAttribute("BeingDragged", false)
+	removeDraggableTags(model)
+
+	-- snap to hitbox and weld
+	model:PivotTo(self.foodHitbox.CFrame)
+	local weld = Instance.new("WeldConstraint")
+	weld.Name = "FoodWeld"
+	weld.Part0 = self.foodHitbox
+	weld.Part1 = rootPart
+	weld.Parent = self.foodHitbox
+	self._foodWeld = weld
+
+	model.Parent = self.model
+
+	if not self.waiting then
+		self:_startWaitingTimer()
+	end
+	self:_setRemaining(FOOD_LEAVE_TIME)
+end
+
 function NPC:_startWaitingTimer()
 	if self.waiting or self.destroyed then
 		return
@@ -413,16 +548,19 @@ function NPC:_startWaitingTimer()
 	self.waiting = true
 
 	task.spawn(function()
-		local remaining = LEAVE_TIME
-		while remaining > 0 do
+		if not self.remaining or self.remaining <= 0 then
+			self.remaining = LEAVE_TIME
+		end
+
+		while self.remaining > 0 do
 			if self.destroyed or self.isLeaving then
 				return
 			end
 			if self.model then
-				self.model.Name = tostring(remaining)
+				self.model.Name = tostring(self.remaining)
 			end
 			task.wait(1)
-			remaining -= 1
+			self.remaining -= 1
 		end
 
 		if self.model then
@@ -431,6 +569,18 @@ function NPC:_startWaitingTimer()
 
 		self:startLeaving()
 	end)
+end
+
+function NPC:_setRemaining(seconds: number)
+	self.remaining = math.max(0, seconds)
+	if not self.model then
+		return
+	end
+	if self.remaining > 0 then
+		self.model.Name = tostring(self.remaining)
+	else
+		self.model.Name = ""
+	end
 end
 
 -- ============================================
@@ -504,6 +654,12 @@ function NPC:Destroy(emitLeavingFinished)
 		self._hitboxConn:Disconnect()
 		self._hitboxConn = nil
 	end
+	if self._foodConn then
+		self._foodConn:Disconnect()
+		self._foodConn = nil
+	end
+	self._foodWeld = nil
+	self.foodModel = nil
 
 	-- free seat
 	if self.seat then
