@@ -76,8 +76,8 @@ task.spawn(function()
 	end
 end)
 
-local MIN_INTERVAL = 10
-local MAX_INTERVAL = 120
+local MIN_INTERVAL = 1
+local MAX_INTERVAL = 1
 
 local lastBatchTime = os.clock()
 local nextInterval = math.random(MIN_INTERVAL, MAX_INTERVAL)
