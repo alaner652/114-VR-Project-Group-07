@@ -67,7 +67,6 @@ function NPC.new(context)
 		stateTimeLeft = 0,
 
 		food = nil,
-		foodWeld = nil,
 		claimedFood = nil,
 
 		serveParams = nil,
@@ -193,7 +192,7 @@ function NPC:_sit()
 	weld.Name = "SeatWeld"
 	weld.Part0 = self.seat
 	weld.Part1 = root
-	weld.C0 = CFrame.new(0, 3, 0)
+	weld.C0 = CFrame.new(0, -5, 0)
 	weld.Parent = root
 
 	if self.humanoid then
@@ -276,8 +275,6 @@ function NPC:_serve(ramenModel)
 	weld.Parent = ramenRoot
 
 	self.food = ramenModel
-	self.foodWeld = weld
-
 	self:_setState(State.EATING, EAT_TIME)
 end
 
@@ -298,9 +295,7 @@ function NPC:_onLeaving()
 
 	if self.food then
 		self.food:Destroy()
-		self.food = nil
 	end
-	self.foodWeld = nil
 
 	local seatWeld = root:FindFirstChild("SeatWeld")
 	if seatWeld then

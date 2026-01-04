@@ -60,6 +60,9 @@ function Utils:spawnModel()
 	if humanoid then
 		model.Parent = NPCContainer
 
+		humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+		humanoid.AutoRotate = false
+
 		model:SetPrimaryPartCFrame(NPCSpawn.CFrame)
 
 		if humanoid then
