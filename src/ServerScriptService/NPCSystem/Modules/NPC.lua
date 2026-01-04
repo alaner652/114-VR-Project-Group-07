@@ -9,7 +9,7 @@ local NPCSpawn = workspace:WaitForChild("NPCSystem"):WaitForChild("NPCSpawn")
 local WAIT_FOOD_TIME = 120
 local EAT_TIME = 2
 
-local SERVE_BOX_SIZE = Vector3.new(4, 2, 3)
+local SERVE_BOX_SIZE = Vector3.new(2, 2, 3)
 local SERVE_BOX_OFFSET = CFrame.new(0, -0.6, -2)
 local SERVE_INTERVAL = 2
 
@@ -48,7 +48,6 @@ function NPC.new(context)
 		humanoid = nil,
 
 		enterWaypoints = nil,
-		moving = false,
 
 		state = State.ENTERING,
 		stateTimeLeft = 0,
@@ -57,7 +56,7 @@ function NPC.new(context)
 		food = nil,
 		foodWeld = nil,
 
-		serveRayTask = nil,
+		serveBoxTask = nil,
 	}, NPC)
 
 	if self.model then
@@ -74,6 +73,12 @@ end
 
 function NPC:_setState(newState, time)
 	if self.state == State.DEAD then
+		return
+	end
+	if self.state == newState then
+		if time ~= nil then
+			self.stateTimeLeft = time
+		end
 		return
 	end
 
@@ -127,27 +132,26 @@ function NPC:_computePath(startPos, goalPos)
 	return path:GetWaypoints()
 end
 
-function NPC:_followWaypoints(waypoints, onSuccess)
-	if self.moving then
-		return
-	end
-	self.moving = true
-
+function NPC:_followWaypoints(waypoints, activeState, onSuccess)
+	local expectedState = activeState
 	task.spawn(function()
 		for _, wp in ipairs(waypoints) do
+			if self.state ~= expectedState then
+				return
+			end
 			if not self.humanoid or not self.humanoid.Parent then
-				self.moving = false
 				return
 			end
 
 			self.humanoid:MoveTo(wp.Position)
 			if not self.humanoid.MoveToFinished:Wait() then
-				self.moving = false
 				return
 			end
 		end
 
-		self.moving = false
+		if self.state ~= expectedState then
+			return
+		end
 		if onSuccess then
 			onSuccess()
 		end
@@ -163,7 +167,7 @@ function NPC:_enterShop()
 	end
 
 	self.enterWaypoints = waypoints
-	self:_followWaypoints(waypoints, function()
+	self:_followWaypoints(waypoints, State.ENTERING, function()
 		self:_sit()
 	end)
 end
@@ -194,39 +198,28 @@ function NPC:_startServeBox()
 		return
 	end
 
-	local root = self.model.HumanoidRootPart
-	if not root then
+	if not self.model.PrimaryPart then
 		return
 	end
-
-	local box = Instance.new("Part")
-	box.Name = "__ServeBox"
-	box.Anchored = true
-	box.CanCollide = false
-	box.CanTouch = false
-	box.CastShadow = false
-	box.Transparency = 0.5
-	box.Size = SERVE_BOX_SIZE
-	box.Parent = workspace
 
 	local params = OverlapParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = {
 		self.model,
 		self.seat,
-		box,
 	}
 
 	self.serveBoxTask = task.spawn(function()
 		RunService.Heartbeat:Wait()
 
 		while self.model and self.state == State.WAITING_FOOD do
-			if not self.model.PrimaryPart then
+			local primary = self.model.PrimaryPart
+			if not primary then
 				break
 			end
-			box.CFrame = self.model.PrimaryPart.CFrame * SERVE_BOX_OFFSET
+			local boxCFrame = primary.CFrame * SERVE_BOX_OFFSET
 
-			local parts = workspace:GetPartsInPart(box, params)
+			local parts = workspace:GetPartBoundsInBox(boxCFrame, SERVE_BOX_SIZE, params)
 
 			for _, part in ipairs(parts) do
 				local model = part:FindFirstAncestorOfClass("Model")
@@ -236,7 +229,6 @@ function NPC:_startServeBox()
 					and model:GetAttribute("Completed") == true
 					and model:GetAttribute("BeingDragged") ~= true
 				then
-					box:Destroy()
 					self.serveBoxTask = nil
 
 					self:_setState(State.SERVING)
@@ -253,9 +245,6 @@ function NPC:_startServeBox()
 			task.wait(SERVE_INTERVAL)
 		end
 
-		if box and box.Parent then
-			box:Destroy()
-		end
 		self.serveBoxTask = nil
 	end)
 end
@@ -305,7 +294,6 @@ function NPC:_onLeaving()
 		seatWeld:Destroy()
 	end
 
-	self.moving = false
 	if self.humanoid then
 		self.humanoid:MoveTo(self.humanoid.RootPart.Position)
 		RunService.Heartbeat:Wait()
@@ -318,7 +306,7 @@ function NPC:_onLeaving()
 	end
 
 	local back = reverseWaypointsSkipLast(self.enterWaypoints)
-	self:_followWaypoints(back, function()
+	self:_followWaypoints(back, State.LEAVING, function()
 		self:Destroy()
 	end)
 end

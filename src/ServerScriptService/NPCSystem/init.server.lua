@@ -1,6 +1,7 @@
 local Utils = script.Parent.Utils
 local EventBus = require(Utils.EventBus)
-local NPC = require(script.NPC)
+
+local NPC = require(script.Modules.NPC)
 
 local on = EventBus.on
 local emit = EventBus.emit

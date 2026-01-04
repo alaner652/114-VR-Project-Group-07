@@ -63,7 +63,7 @@ function Utils:spawnModel()
 		model:SetPrimaryPartCFrame(NPCSpawn.CFrame)
 
 		if humanoid then
-			humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+			humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
 			applyRandomFriendAppearance(humanoid)
 		end
 	end
