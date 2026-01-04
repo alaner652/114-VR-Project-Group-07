@@ -7,11 +7,11 @@ local Utils = require(script.Parent.Utils)
 local NPCSpawn = workspace:WaitForChild("NPCSystem"):WaitForChild("NPCSpawn")
 
 -- =====================
--- Config
+-- 基本設定
 -- =====================
 
-local WAIT_FOOD_TIME = 120
-local EAT_TIME = 20 -- 吃飯一定刷新成 20 秒
+local WAIT_FOOD_TIME = 120 -- 等待上菜的秒數
+local EAT_TIME = 20 -- 吃飯時間(秒)
 
 local SERVE_BOX_SIZE = Vector3.new(2, 2, 3)
 local SERVE_BOX_OFFSET = CFrame.new(0, -0.6, -2)
@@ -49,11 +49,24 @@ local NEXT_ID = 0
 -- Utils
 -- =====================
 
+local function log(id, msg)
+	print(("[NPC %d] %s"):format(id, msg))
+end
+
+local function logWarn(id, msg)
+	warn(("[NPC %d] %s"):format(id, msg))
+end
+
 local function reverseWaypointsSkipLast(list)
 	local out = {}
-	for i = #list - 1, 1, -1 do
+	local function push(i)
+		if i < 1 then
+			return
+		end
 		out[#out + 1] = list[i]
+		push(i - 1)
 	end
+	push(#list - 1)
 	return out
 end
 
@@ -78,6 +91,7 @@ function NPC.new(context)
 
 	local model = Utils:spawnModel()
 	if not model then
+		logWarn(NEXT_ID, "Spawn failed")
 		return nil
 	end
 
@@ -105,16 +119,17 @@ function NPC.new(context)
 
 		serveParams = nil,
 
-		_tickTask = nil,
+		_tickConn = nil,
 	}, NPC)
 
-	-- 基本檢查
+	-- 沒 Humanoid 或主零件就直接清掉，避免後續狀態壞掉
 	if not self.humanoid or not self.model.PrimaryPart then
+		logWarn(self.id, "Missing Humanoid or PrimaryPart")
 		self:Destroy()
 		return nil
 	end
 
-	-- 避免一開始生成在奇怪位置
+	-- 先放到出生點
 	self.model:SetPrimaryPartCFrame(NPCSpawn.CFrame)
 
 	local params = OverlapParams.new()
@@ -122,6 +137,7 @@ function NPC.new(context)
 	params.FilterDescendantsInstances = { self.model, self.seat }
 	self.serveParams = params
 
+	log(self.id, "Spawned")
 	self:_enterShop()
 	return self
 end
@@ -131,16 +147,32 @@ end
 -- =====================
 
 function NPC:_startTickLoop()
-	if self._tickTask then
+	if self._tickConn then
 		return
 	end
 
-	self._tickTask = task.spawn(function()
-		while self.state ~= State.DEAD do
-			task.wait(1)
-			self:Tick()
+	local elapsed = 0
+	self._tickConn = RunService.Heartbeat:Connect(function(dt)
+		if self.state == State.DEAD then
+			self:_stopTickLoop()
+			return
 		end
+
+		elapsed += dt
+		if elapsed < 1 then
+			return
+		end
+
+		elapsed -= 1
+		NPC.Tick(self)
 	end)
+end
+
+function NPC:_stopTickLoop()
+	if self._tickConn then
+		self._tickConn:Disconnect()
+		self._tickConn = nil
+	end
 end
 
 -- =====================
@@ -155,17 +187,20 @@ function NPC:_setState(newState, time)
 	self.state = newState
 	self.timer = time or 0
 
-	-- 確保每秒倒數一定有在跑
 	if newState == State.WAITING or newState == State.EATING then
 		self:_startTickLoop()
+	else
+		self:_stopTickLoop()
 	end
+
+	log(self.id, ("State -> %s (%ds)"):format(newState, self.timer))
 
 	if newState == State.LEAVING then
 		self:_onLeaving()
 	end
 end
 
--- 每秒自動跑（由 _startTickLoop 驅動）
+-- Tick 只負責更新狀態，節拍由 _startTickLoop 控制
 function NPC:Tick()
 	if self.state == State.DEAD then
 		return
@@ -175,19 +210,19 @@ function NPC:Tick()
 		return
 	end
 
-	-- 每秒更新名字
+	-- 方便在 Studio 直接看到狀態
 	self.model.Name = ("%s (%ds)"):format(self.state, math.max(0, self.timer))
 
-	-- WAITING：每秒掃一次碰撞箱找拉麵
+	-- 等待時嘗試收菜
 	if self.state == State.WAITING then
 		self:_tryServe()
 	end
 
-	-- 倒數
+	-- 計時器
 	if self.timer > 0 then
 		self.timer -= 1
 	else
-		-- WAITING 或 EATING 倒數結束就離開
+		-- 等待/吃完時間到就離開
 		if self.state == State.WAITING or self.state == State.EATING then
 			self:_setState(State.LEAVING)
 		end
@@ -195,7 +230,7 @@ function NPC:Tick()
 end
 
 -- =====================
--- Movement (Safe)
+-- Movement (Event-driven)
 -- =====================
 
 function NPC:_computePath(startPos, goalPos)
@@ -207,67 +242,88 @@ function NPC:_computePath(startPos, goalPos)
 	return path:GetWaypoints()
 end
 
-function NPC:_safeMoveTo(pos)
-	if not self.humanoid or not self.humanoid.Parent then
-		return false
+function NPC:_moveToAsync(pos, onFinish)
+	local humanoid = self.humanoid
+	if not humanoid or not humanoid.Parent then
+		if onFinish then
+			onFinish(false)
+		end
+		return
 	end
 
-	local finished = false
-	local reached = false
+	local done = false
+	local conn
 
-	local conn = self.humanoid.MoveToFinished:Connect(function(ok)
-		reached = ok
-		finished = true
+	local function finish(ok)
+		if done then
+			return
+		end
+		done = true
+		if conn then
+			conn:Disconnect()
+		end
+		if onFinish then
+			onFinish(ok)
+		end
+	end
+
+	conn = humanoid.MoveToFinished:Connect(function(ok)
+		finish(ok)
 	end)
 
-	self.humanoid:MoveTo(pos)
-
-	local start = os.clock()
-	while not finished and os.clock() - start < MAX_MOVE_TIME do
-		task.wait()
-	end
-
-	if conn then
-		conn:Disconnect()
-	end
-
-	return finished and reached
+	humanoid:MoveTo(pos)
+	task.delay(MAX_MOVE_TIME, function()
+		finish(false)
+	end)
 end
 
 function NPC:_followWaypoints(waypoints, onFinish)
-	task.spawn(function()
-		for i = self.lastWaypointIndex, #waypoints do
-			self.lastWaypointIndex = i
+	local function step(index)
+		if self.state == State.DEAD then
+			return
+		end
 
-			-- NPC 被銷毀或 humanoid 不存在
-			if self.state == State.DEAD or not self.humanoid or not self.humanoid.Parent then
+		local humanoid = self.humanoid
+		if not humanoid or not humanoid.Parent then
+			return
+		end
+
+		if index > #waypoints then
+			if onFinish then
+				onFinish()
+			end
+			return
+		end
+
+		self.lastWaypointIndex = index
+
+		self:_moveToAsync(waypoints[index].Position, function(ok)
+			if self.state == State.DEAD then
 				return
 			end
 
-			if not self:_safeMoveTo(waypoints[i].Position) then
+			if not ok then
 				self.retryCount += 1
-				warn(
-					("[NPC %d] Move interrupted (%d/%d) at waypoint %d"):format(self.id, self.retryCount, MAX_RETRY, i)
-				)
+				logWarn(self.id, ("Move interrupted (%d/%d) at waypoint %d"):format(self.retryCount, MAX_RETRY, index))
 
 				if self.retryCount >= MAX_RETRY then
-					warn(("[NPC %d] Too many retries -> Destroy"):format(self.id))
+					logWarn(self.id, "Too many retries -> Destroy")
 					self:Destroy()
 					return
 				end
 
-				-- 回到上一個 waypoint 再試
-				self.lastWaypointIndex = math.max(1, i - 1)
-				task.wait(0.5)
-				self:_followWaypoints(waypoints, onFinish)
+				self.lastWaypointIndex = math.max(1, index - 1)
+				task.delay(0.5, function()
+					step(self.lastWaypointIndex)
+				end)
 				return
 			end
-		end
 
-		if onFinish then
-			onFinish()
-		end
-	end)
+			step(index + 1)
+		end)
+	end
+
+	step(self.lastWaypointIndex)
 end
 
 -- =====================
@@ -277,6 +333,7 @@ end
 function NPC:_enterShop()
 	local waypoints = self:_computePath(NPCSpawn.Position, self.hitbox.Position)
 	if not waypoints then
+		logWarn(self.id, "Path compute failed (enter)")
 		self:Destroy()
 		return
 	end
@@ -285,6 +342,7 @@ function NPC:_enterShop()
 	self.lastWaypointIndex = 1
 	self.retryCount = 0
 
+	log(self.id, "Entering")
 	self:_followWaypoints(waypoints, function()
 		self:_sit()
 	end)
@@ -297,22 +355,22 @@ function NPC:_sit()
 
 	local root = self.model and self.model.PrimaryPart
 	if not root then
+		logWarn(self.id, "Missing PrimaryPart on sit")
 		self:Destroy()
 		return
 	end
 
-	-- Motor6D 座位焊接（你指定）
+	-- 建立座位焊接
 	local weld = Instance.new("Motor6D")
 	weld.Name = "SeatWeld"
 	weld.Part0 = self.seat
 	weld.Part1 = root
 
-	-- 強制定位：把 NPC 對齊到 seat 上方
+	-- 把 NPC 移到座位上方
 	local offsetY = (self.seat.Size.Y * 0.5) + (root.Size.Y * 0.5)
 	root.CFrame = self.seat.CFrame * CFrame.new(0, offsetY, 0)
 
-	-- Motor6D 的 C0/C1 這裡保持簡單：讓 Part1 以當下相對位置焊住
-	-- (讓 root 留在你剛設定的位置)
+	-- 用 C0/C1 固定坐姿
 	weld.C0 = self.seat.CFrame:ToObjectSpace(root.CFrame)
 	weld.C1 = CFrame.new()
 	weld.Parent = root
@@ -344,51 +402,56 @@ function NPC:_tryServe()
 	local boxCFrame = primary.CFrame * SERVE_BOX_OFFSET
 	local parts = workspace:GetPartBoundsInBox(boxCFrame, SERVE_BOX_SIZE, self.serveParams)
 
-	for _, part in ipairs(parts) do
+	local function tryPart(index)
+		if index > #parts then
+			return
+		end
+
+		local part = parts[index]
 		local ramenModel = part:FindFirstAncestorOfClass("Model")
 		if not ramenModel then
-			continue
+			return tryPart(index + 1)
 		end
 
 		if not CollectionService:HasTag(ramenModel, "Ramen") then
-			continue
+			return tryPart(index + 1)
 		end
 		if ramenModel:GetAttribute("Completed") ~= true then
-			continue
+			return tryPart(index + 1)
 		end
 		if ramenModel:GetAttribute("BeingDragged") == true then
-			continue
+			return tryPart(index + 1)
 		end
 
 		local ramenRoot = ramenModel.PrimaryPart
 		if not ramenRoot then
-			continue
+			return tryPart(index + 1)
 		end
 
-		-- 若已經焊過（被其他 NPC 吃了），跳過
+		-- 已被其他 NPC 接走就跳過
 		if ramenRoot:FindFirstChild("FoodWeld") then
-			continue
+			return tryPart(index + 1)
 		end
 
-		-- 爭奪：距離平方更近者可覆蓋 claim
+		-- 用距離做 claim，避免同一碗被多個 NPC 搶走
 		local myDist2 = dist2(primary.Position, ramenRoot.Position)
 		local curNpc = ramenModel:GetAttribute(SERVE_CLAIM_ATTR)
 		local curDist = ramenModel:GetAttribute(SERVE_CLAIM_DIST_ATTR)
 
 		if curNpc ~= nil and curNpc ~= self.id and curDist ~= nil and curDist <= myDist2 then
-			continue
+			return tryPart(index + 1)
 		end
 
 		ramenModel:SetAttribute(SERVE_CLAIM_ATTR, self.id)
 		ramenModel:SetAttribute(SERVE_CLAIM_DIST_ATTR, myDist2)
 
-		-- 用一個 Heartbeat 確認 claim 沒被別人搶走，再正式進入吃飯
+		-- 下一幀再確認，讓其他 NPC 有機會搶先
 		self.claimedFood = ramenModel
 
 		task.spawn(function()
 			RunService.Heartbeat:Wait()
 
-			-- NPC 已死 / 不在等待 / claim 被搶走：回復狀態
+			-- 狀態變了就放棄 claim
 			if self.state ~= State.WAITING then
 				clearServeClaim(ramenModel, self.id)
 				if self.claimedFood == ramenModel then
@@ -406,13 +469,13 @@ function NPC:_tryServe()
 
 			self:_eat(ramenModel)
 		end)
-
-		return
 	end
+
+	tryPart(1)
 end
 
 function NPC:_eat(ramenModel)
-	-- 進入 EATING 前再次確認
+	-- 只能從等待狀態開始吃
 	if self.state ~= State.WAITING then
 		clearServeClaim(ramenModel, self.id)
 		return
@@ -430,7 +493,7 @@ function NPC:_eat(ramenModel)
 		return
 	end
 
-	-- 若已被焊（別人吃了），放棄
+	-- 已被焊住代表被別人拿走
 	if ramenRoot:FindFirstChild("FoodWeld") then
 		clearServeClaim(ramenModel, self.id)
 		if self.claimedFood == ramenModel then
@@ -439,7 +502,7 @@ function NPC:_eat(ramenModel)
 		return
 	end
 
-	-- 確定吃飯：WeldConstraint 焊接（你指定）
+	-- 把拉麵焊到 NPC 身上
 	local weld = Instance.new("WeldConstraint")
 	weld.Name = "FoodWeld"
 	weld.Part0 = npcRoot
@@ -449,7 +512,7 @@ function NPC:_eat(ramenModel)
 	self.food = ramenModel
 	self.foodWeld = weld
 
-	-- 吃飯狀態：倒數直接刷新成 20 秒（不管原本剩多少）
+	log(self.id, "Start eating")
 	self:_setState(State.EATING, EAT_TIME)
 end
 
@@ -462,12 +525,14 @@ function NPC:_onLeaving()
 		return
 	end
 
-	-- 解除坐姿
+	log(self.id, "Leaving")
+
+	-- 站起來
 	if self.humanoid then
 		self.humanoid.Sit = false
 	end
 
-	-- 清食物：clear claim + destroy 食物模型（依你原本邏輯）
+	-- 清掉餐點與 claim
 	if self.food then
 		clearServeClaim(self.food, self.id)
 		if self.food.Parent then
@@ -476,32 +541,32 @@ function NPC:_onLeaving()
 	end
 	self.food = nil
 
-	-- 清 claim 記錄（避免 Destroy 時重複處理）
+	-- 放掉可能還沒吃到的餐點 claim
 	clearServeClaim(self.claimedFood, self.id)
 	self.claimedFood = nil
 
-	-- 清 FoodWeld（焊在 ramenRoot 上，destroy food 時會一起走；這裡保守清空引用）
+	-- FoodWeld 會跟著拉麵一起銷毀，這裡只清參考
 	self.foodWeld = nil
 
-	-- 清 SeatWeld（Motor6D）
+	-- 清掉座位焊接
 	if self.seatWeld and self.seatWeld.Parent then
 		self.seatWeld:Destroy()
 	end
 	self.seatWeld = nil
 
-	-- 定位回 hitbox 再走回去（你要求）
+	-- 先把角色移回出口，再走回出生點
 	local root = self.model and self.model.PrimaryPart
 	if not root then
 		self:Destroy()
 		return
 	end
 
-	-- 停止殘留 MoveTo 影響（保守）
+	-- 等一幀再挪位置，避免碰撞卡住
 	RunService.Heartbeat:Wait()
 	root.CFrame = self.hitbox.CFrame
 	RunService.Heartbeat:Wait()
 
-	-- 反向路徑回去
+	-- 沒有回程路徑就直接清掉
 	if not self.enterWaypoints then
 		self:Destroy()
 		return
@@ -521,32 +586,32 @@ function NPC:Destroy()
 		return
 	end
 	self.state = State.DEAD
+	self:_stopTickLoop()
+	log(self.id, "Destroyed")
 
-	-- 清 claim（確保不會卡住別人）
+	-- 清掉 claim，避免殘留
 	clearServeClaim(self.claimedFood, self.id)
 	clearServeClaim(self.food, self.id)
 	self.claimedFood = nil
 
-	-- seat Active 釋放（你系統用的）
+	-- 釋放座位
 	if self.seat then
 		self.seat:SetAttribute("Active", false)
 	end
 
-	-- 清模型
+	-- 清掉模型
 	if self.model then
 		self.model:Destroy()
 		self.model = nil
 	end
 
-	-- 清引用
+	-- 清掉參考
 	self.humanoid = nil
 	self.enterWaypoints = nil
 	self.seatWeld = nil
 	self.food = nil
 	self.foodWeld = nil
 	self.serveParams = nil
-
-	setmetatable(self, nil)
 end
 
 return NPC
