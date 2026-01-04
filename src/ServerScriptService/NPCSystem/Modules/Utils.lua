@@ -7,6 +7,22 @@ local NPCContainer = workspace:WaitForChild("NPCs")
 
 local Utils = {}
 
+local DISABLED_STATES = {
+	Enum.HumanoidStateType.FallingDown,
+	Enum.HumanoidStateType.Ragdoll,
+	Enum.HumanoidStateType.GettingUp,
+}
+
+local function configureHumanoid(humanoid)
+	for _, state in ipairs(DISABLED_STATES) do
+		humanoid:SetStateEnabled(state, false)
+	end
+
+	if not humanoid.Sit then
+		humanoid:ChangeState(Enum.HumanoidStateType.Running)
+	end
+end
+
 local function getRandomFriendUserId()
 	local players = Players:GetPlayers()
 	if #players == 0 then
@@ -44,6 +60,7 @@ local function applyRandomFriendAppearance(humanoid)
 		end)
 		if ok and desc and humanoid and humanoid.Parent then
 			humanoid:ApplyDescription(desc)
+			configureHumanoid(humanoid)
 		end
 	end)
 end
@@ -63,6 +80,7 @@ function Utils:spawnModel()
 
 		if humanoid then
 			humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+			configureHumanoid(humanoid)
 			applyRandomFriendAppearance(humanoid)
 		end
 	end
