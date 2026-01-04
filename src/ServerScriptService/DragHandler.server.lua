@@ -1,4 +1,5 @@
 local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
 
 local DragRequest = game.ReplicatedStorage:WaitForChild("DragRequest")
 local GetDraggingObject = game.ServerScriptService:WaitForChild("GetDraggingObject")
@@ -12,6 +13,19 @@ local function getRoot(instance)
 	end
 
 	return instance:FindFirstAncestorOfClass("Model") or instance
+end
+
+local function isRelated(a: Instance, b: Instance): boolean
+	return a == b or a:IsDescendantOf(b) or b:IsDescendantOf(a)
+end
+
+local function getDraggingPlayerByObject(instance: Instance)
+	for player, dragged in pairs(PlayerDragging) do
+		if dragged and isRelated(instance, dragged) then
+			return player
+		end
+	end
+	return nil
 end
 
 local function stopDrag(player: Player)
@@ -77,4 +91,12 @@ end
 
 Players.PlayerRemoving:Connect(function(player)
 	stopDrag(player)
+end)
+
+CollectionService:GetInstanceRemovedSignal("Draggable"):Connect(function(instance)
+	local player = getDraggingPlayerByObject(instance)
+	if player then
+		print("Draggable removed from", instance.Name, "stopping drag for player", player and player.Name or "nil")
+		stopDrag(player)
+	end
 end)

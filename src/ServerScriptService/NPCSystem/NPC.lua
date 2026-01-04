@@ -1,8 +1,6 @@
--- ======================================================
--- Services
--- ======================================================
 local PathfindingService = game:GetService("PathfindingService")
 local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local NPCFolder = ReplicatedStorage:WaitForChild("NPCs")
@@ -10,45 +8,24 @@ local NPCFolder = ReplicatedStorage:WaitForChild("NPCs")
 local NPCSpawn = workspace:WaitForChild("NPCSystem"):WaitForChild("NPCSpawn")
 local NPCContainer = workspace:WaitForChild("NPCs")
 
--- ======================================================
--- Config
--- ======================================================
-local LEAVE_TIME = 2
+local WAIT_FOOD_TIME = 120
+local EAT_TIME = 20
 
 local PATH_PARAMS = {
 	AgentRadius = 3,
 	AgentHeight = 5,
 	AgentCanJump = true,
 }
+local State = {
+	ENTERING = "ENTERING",
+	WAITING_FOOD = "WAITING_FOOD",
+	EATING = "EATING",
+	LEAVING = "LEAVING",
+	DEAD = "DEAD",
+}
 
--- ======================================================
--- NPC Class
--- ======================================================
 local NPC = {}
 NPC.__index = NPC
-
--- ======================================================
--- Utils
--- ======================================================
-
-local function spawnModel()
-	local rig = NPCFolder:WaitForChild("Rig")
-	local model = rig:Clone()
-	model.Parent = NPCContainer
-	return model
-end
-
-local function reverseWaypointsSkipLast(waypoints)
-	local reversed = {}
-	for i = #waypoints - 1, 1, -1 do
-		reversed[#reversed + 1] = waypoints[i]
-	end
-	return reversed
-end
-
--- ======================================================
--- Friend Avatar Utils
--- ======================================================
 
 local function getRandomFriendUserId()
 	local players = Players:GetPlayers()
@@ -87,15 +64,39 @@ local function applyRandomFriendAppearance(humanoid)
 		local ok, desc = pcall(function()
 			return Players:GetHumanoidDescriptionFromUserId(userId)
 		end)
-		if ok and desc then
+
+		if ok and desc and humanoid and humanoid.Parent then
 			humanoid:ApplyDescription(desc)
 		end
 	end)
 end
 
--- ======================================================
--- Constructor
--- ======================================================
+local function spawnModel()
+	local rig = NPCFolder:WaitForChild("Rig")
+	local model = rig:Clone()
+	model.Parent = NPCContainer
+	return model
+end
+
+local function reverseWaypointsSkipLast(waypoints)
+	local reversed = {}
+	for i = #waypoints - 1, 1, -1 do
+		reversed[#reversed + 1] = waypoints[i]
+	end
+	return reversed
+end
+
+local function removeDraggableTagRecursive(model: Model)
+	if CollectionService:HasTag(model, "Draggable") then
+		CollectionService:RemoveTag(model, "Draggable")
+	end
+
+	for _, inst in ipairs(model:GetDescendants()) do
+		if CollectionService:HasTag(inst, "Draggable") then
+			CollectionService:RemoveTag(inst, "Draggable")
+		end
+	end
+end
 
 function NPC.new(context)
 	local self = setmetatable({
@@ -106,9 +107,13 @@ function NPC.new(context)
 		humanoid = nil,
 
 		enterWaypoints = nil,
-		seated = false,
 		moving = false,
 
+		state = State.ENTERING,
+		stateTimeLeft = 0,
+		stateLoopRunning = false,
+
+		foodWeld = nil,
 		retryCount = 0,
 	}, NPC)
 
@@ -120,29 +125,67 @@ function NPC.new(context)
 	end
 
 	self:_enterShop()
+	self:_startStateLoop()
+
 	return self
 end
 
--- ======================================================
--- Pathfinding
--- ======================================================
+function NPC:_setState(newState, time)
+	if self.state == State.DEAD then
+		return
+	end
+
+	self.state = newState
+	self.stateTimeLeft = time or 0
+
+	if self.humanoid then
+		self.humanoid.DisplayName = ""
+	end
+
+	if newState == State.WAITING_FOOD then
+		self:_onWaitingFood()
+	elseif newState == State.EATING then
+		self:_onEating()
+	elseif newState == State.LEAVING then
+		self:_onLeaving()
+	end
+end
+
+function NPC:_startStateLoop()
+	if self.stateLoopRunning then
+		return
+	end
+	self.stateLoopRunning = true
+
+	task.spawn(function()
+		while self.model and self.state ~= State.DEAD do
+			if self.stateTimeLeft > 0 then
+				if self.humanoid then
+					self.humanoid.DisplayName = string.format("%s (%ds)", self.state, self.stateTimeLeft)
+				end
+				task.wait(1)
+				self.stateTimeLeft -= 1
+			else
+				if self.state == State.WAITING_FOOD or self.state == State.EATING then
+					self:_setState(State.LEAVING)
+				else
+					task.wait(0.2)
+				end
+			end
+		end
+	end)
+end
 
 function NPC:_computePath(startPos, goalPos)
 	local path = PathfindingService:CreatePath(PATH_PARAMS)
 	path:ComputeAsync(startPos, goalPos)
-
 	if path.Status ~= Enum.PathStatus.Success then
 		return nil
 	end
-
 	return path:GetWaypoints()
 end
 
--- ======================================================
--- Movement
--- ======================================================
-
-function NPC:_followWaypoints(waypoints, onSuccess, onFail)
+function NPC:_followWaypoints(waypoints, onSuccess)
 	if self.moving then
 		return
 	end
@@ -152,34 +195,20 @@ function NPC:_followWaypoints(waypoints, onSuccess, onFail)
 		for _, wp in ipairs(waypoints) do
 			if not self.humanoid or not self.humanoid.Parent then
 				self.moving = false
-				if onFail then
-					onFail("humanoid missing")
-				end
 				return
 			end
-
 			self.humanoid:MoveTo(wp.Position)
-			local reached = self.humanoid.MoveToFinished:Wait()
-
-			if not reached then
+			if not self.humanoid.MoveToFinished:Wait() then
 				self.moving = false
-				if onFail then
-					onFail("interrupted")
-				end
 				return
 			end
 		end
-
 		self.moving = false
 		if onSuccess then
 			onSuccess()
 		end
 	end)
 end
-
--- ======================================================
--- Behaviour
--- ======================================================
 
 function NPC:_enterShop()
 	local waypoints = self:_computePath(NPCSpawn.Position, self.hitbox.Position)
@@ -189,26 +218,12 @@ function NPC:_enterShop()
 	end
 
 	self.enterWaypoints = waypoints
-
 	self:_followWaypoints(waypoints, function()
 		self:_sit()
-	end, function()
-		self.retryCount += 1
-		if self.retryCount > 1 then
-			self:Destroy()
-			return
-		end
-		task.wait(0.5)
-		self:_enterShop()
 	end)
 end
 
 function NPC:_sit()
-	if self.seated then
-		return
-	end
-	self.seated = true
-
 	local root = self.model.PrimaryPart
 	if not root then
 		return
@@ -225,56 +240,96 @@ function NPC:_sit()
 		self.humanoid.Sit = true
 	end
 
-	task.delay(LEAVE_TIME, function()
-		if self.model then
-			self:startLeaving()
+	self:_bindServeDetector()
+	self:_setState(State.WAITING_FOOD, WAIT_FOOD_TIME)
+end
+
+function NPC:_bindServeDetector()
+	self.hitbox.Touched:Connect(function(hit)
+		if self.state ~= State.WAITING_FOOD then
+			return
 		end
+
+		local model = hit:FindFirstAncestorOfClass("Model")
+		if not model then
+			return
+		end
+
+		if not CollectionService:HasTag(model, "Ramen") then
+			return
+		end
+
+		if model:GetAttribute("Completed") ~= true then
+			return
+		end
+
+		removeDraggableTagRecursive(model)
+		self:_serve(model)
 	end)
 end
 
-function NPC:startLeaving()
+function NPC:_serve(ramenModel)
+	local npcRoot = self.model.PrimaryPart
+	local ramenRoot = ramenModel.PrimaryPart
+
+	if npcRoot and ramenRoot then
+		local weld = Instance.new("Motor6D")
+		weld.Name = "FoodWeld"
+		weld.Part0 = npcRoot
+		weld.Part1 = ramenRoot
+		weld.C0 = CFrame.new(0, -1.5, -2)
+		weld.Parent = npcRoot
+		self.foodWeld = weld
+	end
+
+	self:_setState(State.EATING, EAT_TIME)
+end
+
+function NPC:_onWaitingFood() end
+
+function NPC:_onEating() end
+
+function NPC:_onLeaving()
+	if self.humanoid then
+		self.humanoid.DisplayName = ""
+		self.humanoid.Sit = false
+	end
+
+	local root = self.model.PrimaryPart
+	if root then
+		local seatWeld = root:FindFirstChild("SeatWeld")
+		if seatWeld then
+			seatWeld:Destroy()
+		end
+	end
+
+	if self.foodWeld then
+		self.foodWeld:Destroy()
+		self.foodWeld = nil
+	end
+
 	if not self.enterWaypoints then
 		self:Destroy()
 		return
 	end
 
-	local root = self.model.PrimaryPart
-	if not root then
-		self:Destroy()
-		return
-	end
-
-	local weld = root:FindFirstChild("SeatWeld")
-	if weld then
-		weld:Destroy()
-	end
-
-	if self.humanoid then
-		self.humanoid.Sit = false
-	end
-
-	local backWaypoints = reverseWaypointsSkipLast(self.enterWaypoints)
-
-	self:_followWaypoints(backWaypoints, function()
-		self:Destroy()
-	end, function()
+	local back = reverseWaypointsSkipLast(self.enterWaypoints)
+	self:_followWaypoints(back, function()
 		self:Destroy()
 	end)
 end
 
--- ======================================================
--- Cleanup
--- ======================================================
-
 function NPC:Destroy()
+	self.state = State.DEAD
+
 	if self.model then
 		self.model:Destroy()
 		self.model = nil
 	end
 
-	self.humanoid = nil
-	self.enterWaypoints = nil
-	self.seat:SetAttribute("Active", false)
+	if self.seat then
+		self.seat:SetAttribute("Active", false)
+	end
 
 	setmetatable(self, nil)
 end
