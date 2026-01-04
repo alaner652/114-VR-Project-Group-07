@@ -11,6 +11,8 @@ local EAT_TIME = 2
 
 local SERVE_BOX_SIZE = Vector3.new(2, 2, 3)
 local SERVE_BOX_OFFSET = CFrame.new(0, -0.6, -2)
+local SERVE_CLAIM_ATTR = "ServingNPC"
+local SERVE_CLAIM_DIST_ATTR = "ServingNPCDist2"
 
 local PATH_PARAMS = {
 	AgentRadius = 3,
@@ -29,6 +31,7 @@ local State = {
 
 local NPC = {}
 NPC.__index = NPC
+local NEXT_ID = 0
 
 local function reverseWaypointsSkipLast(waypoints)
 	local reversed = {}
@@ -36,6 +39,18 @@ local function reverseWaypointsSkipLast(waypoints)
 		reversed[#reversed + 1] = waypoints[i]
 	end
 	return reversed
+end
+
+local function distanceSquared(a, b)
+	local diff = a - b
+	return diff.X * diff.X + diff.Y * diff.Y + diff.Z * diff.Z
+end
+
+local function clearServeClaim(model, npcId)
+	if model and model.Parent and model:GetAttribute(SERVE_CLAIM_ATTR) == npcId then
+		model:SetAttribute(SERVE_CLAIM_ATTR, nil)
+		model:SetAttribute(SERVE_CLAIM_DIST_ATTR, nil)
+	end
 end
 
 function NPC.new(context)
@@ -53,9 +68,13 @@ function NPC.new(context)
 
 		food = nil,
 		foodWeld = nil,
+		claimedFood = nil,
 
 		serveParams = nil,
 	}, NPC)
+
+	NEXT_ID += 1
+	self.id = NEXT_ID
 
 	if self.model then
 		self.humanoid = self.model:FindFirstChildOfClass("Humanoid")
@@ -205,12 +224,35 @@ function NPC:TryServe()
 			and model:GetAttribute("Completed") == true
 			and model:GetAttribute("BeingDragged") ~= true
 		then
+			local ramenRoot = model.PrimaryPart
+			if not ramenRoot or ramenRoot:FindFirstChild("FoodWeld") then
+				continue
+			end
+
+			local dist2 = distanceSquared(primary.Position, ramenRoot.Position)
+			local currentClaim = model:GetAttribute(SERVE_CLAIM_ATTR)
+			local currentDist = model:GetAttribute(SERVE_CLAIM_DIST_ATTR)
+			if currentClaim ~= nil and currentClaim ~= self.id and currentDist ~= nil and dist2 >= currentDist then
+				continue
+			end
+
+			model:SetAttribute(SERVE_CLAIM_ATTR, self.id)
+			model:SetAttribute(SERVE_CLAIM_DIST_ATTR, dist2)
+			self.claimedFood = model
+
 			self:_setState(State.SERVING)
 			task.spawn(function()
 				RunService.Heartbeat:Wait()
-				if self.state == State.SERVING then
-					self:_serve(model)
+				if self.state ~= State.SERVING or model:GetAttribute(SERVE_CLAIM_ATTR) ~= self.id then
+					clearServeClaim(model, self.id)
+					self.claimedFood = nil
+					if self.state == State.SERVING then
+						self:_setState(State.WAITING_FOOD, WAIT_FOOD_TIME)
+					end
+					return
 				end
+
+				self:_serve(model)
 			end)
 			return
 		end
@@ -221,6 +263,9 @@ function NPC:_serve(ramenModel)
 	local npcRoot = self.model.PrimaryPart
 	local ramenRoot = ramenModel.PrimaryPart
 	if not npcRoot or not ramenRoot then
+		return
+	end
+	if ramenRoot:FindFirstChild("FoodWeld") then
 		return
 	end
 
@@ -281,6 +326,9 @@ end
 
 function NPC:Destroy()
 	self.state = State.DEAD
+
+	clearServeClaim(self.claimedFood, self.id)
+	self.claimedFood = nil
 
 	if self.model then
 		self.model:Destroy()
