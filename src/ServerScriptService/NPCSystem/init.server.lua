@@ -2,14 +2,15 @@ local Utils = script.Parent.Utils
 local EventBus = require(Utils.EventBus)
 
 local NPC = require(script.Modules.NPC)
-local NPCManager = require(script.Modules.NPCManager)
 
 local on = EventBus.on
 local emit = EventBus.emit
 
 local TablesFolder = workspace:WaitForChild("NPCSystem")
 
-NPCManager.Start()
+-- =====================
+-- Seat Utils
+-- =====================
 
 local function findAvailableSeat()
 	local candidates = {}
@@ -40,42 +41,70 @@ local function findAvailableSeat()
 	return choice
 end
 
-local State = "Idle"
+-- =====================
+-- FSM
+-- =====================
 
-function setState(newState)
-	if State == newState then
+local State = {
+	IDLE = "Idle",
+	SERVING = "Serving",
+}
+
+local currentState = State.IDLE
+
+local function setState(newState)
+	if currentState == newState then
 		return
 	end
-	State = newState
-	print("[INFO]", newState, "->", newState)
+	print("[NPCSystem]", currentState, "->", newState)
+	currentState = newState
 end
 
+-- =====================
+-- Event: Batch Start
+-- =====================
+
 on("BatchTimeReached", function()
-	if State ~= "Idle" then
+	if currentState ~= State.IDLE then
 		return
 	end
-	setState("Serving")
+	setState(State.SERVING)
 end)
+
+-- =====================
+-- Spawn Loop
+-- =====================
 
 task.spawn(function()
 	while task.wait(1) do
-		if State ~= "Serving" then
+		if currentState ~= State.SERVING then
 			continue
 		end
 
 		local result = findAvailableSeat()
 		if not result then
+			-- 沒座位，自然結束這一批
+			setState(State.IDLE)
 			continue
 		end
 
-		local npc = NPC.new({ seat = result.seat, hitbox = result.hitbox })
-		if npc and npc.state ~= "DEAD" then
-			NPCManager.Register(npc)
+		local npc = NPC.new({
+			seat = result.seat,
+			hitbox = result.hitbox,
+		})
+
+		-- 防呆：如果 NPC 沒成功生成，釋放座位
+		if not npc or npc.state == "DEAD" then
+			result.seat:SetAttribute("Active", false)
 		end
 
 		task.wait(math.random(1, 3))
 	end
 end)
+
+-- =====================
+-- Batch Timer
+-- =====================
 
 local MIN_INTERVAL = 1
 local MAX_INTERVAL = 1
@@ -85,7 +114,7 @@ local nextInterval = math.random(MIN_INTERVAL, MAX_INTERVAL)
 
 task.spawn(function()
 	while task.wait(1) do
-		if State ~= "Idle" then
+		if currentState ~= State.IDLE then
 			continue
 		end
 
