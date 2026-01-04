@@ -1,4 +1,8 @@
+-- ======================================================
+-- Services
+-- ======================================================
 local PathfindingService = game:GetService("PathfindingService")
+local Players = game:GetService("Players")
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local NPCFolder = ReplicatedStorage:WaitForChild("NPCs")
@@ -6,6 +10,9 @@ local NPCFolder = ReplicatedStorage:WaitForChild("NPCs")
 local NPCSpawn = workspace:WaitForChild("NPCSystem"):WaitForChild("NPCSpawn")
 local NPCContainer = workspace:WaitForChild("NPCs")
 
+-- ======================================================
+-- Config
+-- ======================================================
 local LEAVE_TIME = 2
 
 local PATH_PARAMS = {
@@ -14,6 +21,9 @@ local PATH_PARAMS = {
 	AgentCanJump = true,
 }
 
+-- ======================================================
+-- NPC Class
+-- ======================================================
 local NPC = {}
 NPC.__index = NPC
 
@@ -34,6 +44,53 @@ local function reverseWaypointsSkipLast(waypoints)
 		reversed[#reversed + 1] = waypoints[i]
 	end
 	return reversed
+end
+
+-- ======================================================
+-- Friend Avatar Utils
+-- ======================================================
+
+local function getRandomFriendUserId()
+	local players = Players:GetPlayers()
+	if #players == 0 then
+		return nil
+	end
+
+	local basePlayer = players[math.random(#players)]
+
+	local ok, pages = pcall(function()
+		return Players:GetFriendsAsync(basePlayer.UserId)
+	end)
+	if not ok then
+		return nil
+	end
+
+	local friends = {}
+	for _, friend in ipairs(pages:GetCurrentPage()) do
+		table.insert(friends, friend)
+	end
+
+	if #friends == 0 then
+		return nil
+	end
+
+	return friends[math.random(#friends)].Id
+end
+
+local function applyRandomFriendAppearance(humanoid)
+	local userId = getRandomFriendUserId()
+	if not userId then
+		return
+	end
+
+	task.spawn(function()
+		local ok, desc = pcall(function()
+			return Players:GetHumanoidDescriptionFromUserId(userId)
+		end)
+		if ok and desc then
+			humanoid:ApplyDescription(desc)
+		end
+	end)
 end
 
 -- ======================================================
@@ -58,6 +115,10 @@ function NPC.new(context)
 	self.humanoid = self.model:FindFirstChildOfClass("Humanoid")
 	self.model:SetPrimaryPartCFrame(NPCSpawn.CFrame)
 
+	if self.humanoid then
+		applyRandomFriendAppearance(self.humanoid)
+	end
+
 	self:_enterShop()
 	return self
 end
@@ -78,7 +139,7 @@ function NPC:_computePath(startPos, goalPos)
 end
 
 -- ======================================================
--- Movement (只負責走，不做決策)
+-- Movement
 -- ======================================================
 
 function NPC:_followWaypoints(waypoints, onSuccess, onFail)
@@ -101,7 +162,6 @@ function NPC:_followWaypoints(waypoints, onSuccess, onFail)
 			local reached = self.humanoid.MoveToFinished:Wait()
 
 			if not reached then
-				warn("[NPC] MoveTo interrupted:", self.model)
 				self.moving = false
 				if onFail then
 					onFail("interrupted")
@@ -123,7 +183,6 @@ end
 
 function NPC:_enterShop()
 	local waypoints = self:_computePath(NPCSpawn.Position, self.hitbox.Position)
-
 	if not waypoints then
 		self:Destroy()
 		return
@@ -136,7 +195,6 @@ function NPC:_enterShop()
 	end, function()
 		self.retryCount += 1
 		if self.retryCount > 1 then
-			warn("[NPC] Failed to enter shop:", self.model)
 			self:Destroy()
 			return
 		end
@@ -216,6 +274,7 @@ function NPC:Destroy()
 
 	self.humanoid = nil
 	self.enterWaypoints = nil
+	self.seat:SetAttribute("Active", false)
 
 	setmetatable(self, nil)
 end

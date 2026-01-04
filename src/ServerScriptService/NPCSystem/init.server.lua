@@ -43,6 +43,7 @@ function setState(newState)
 		return
 	end
 	State = newState
+	print("[INFO]", newState, "->", newState)
 end
 
 on("BatchTimeReached", function()
@@ -53,9 +54,7 @@ on("BatchTimeReached", function()
 end)
 
 task.spawn(function()
-	while true do
-		task.wait(1)
-
+	while task.wait(1) do
 		if State ~= "Serving" then
 			continue
 		end
@@ -78,11 +77,7 @@ local lastBatchTime = os.clock()
 local nextInterval = math.random(MIN_INTERVAL, MAX_INTERVAL)
 
 task.spawn(function()
-	while true do
-		print("[FSM]", State, "->", State)
-
-		task.wait(1)
-
+	while task.wait(1) do
 		if State ~= "Idle" then
 			continue
 		end
