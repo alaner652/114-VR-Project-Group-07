@@ -65,12 +65,7 @@ task.spawn(function()
 			continue
 		end
 
-		NPC.new({
-			seat = result.seat,
-			hitbox = result.hitbox,
-			table = result.table,
-			events = EventBus,
-		})
+		NPC.new({ seat = result.seat, hitbox = result.hitbox })
 
 		task.wait(math.random(1, 3))
 	end
