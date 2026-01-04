@@ -1,12 +1,10 @@
 local PathfindingService = game:GetService("PathfindingService")
-local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local NPCFolder = ReplicatedStorage:WaitForChild("NPCs")
+local Utils = require(script.Parent.Utils)
+
 local NPCSpawn = workspace:WaitForChild("NPCSystem"):WaitForChild("NPCSpawn")
-local NPCContainer = workspace:WaitForChild("NPCs")
 
 local WAIT_FOOD_TIME = 120
 local EAT_TIME = 2
@@ -33,13 +31,6 @@ local State = {
 local NPC = {}
 NPC.__index = NPC
 
-local function spawnModel()
-	local rig = NPCFolder:WaitForChild("Rig")
-	local model = rig:Clone()
-	model.Parent = NPCContainer
-	return model
-end
-
 local function reverseWaypointsSkipLast(waypoints)
 	local reversed = {}
 	for i = #waypoints - 1, 1, -1 do
@@ -48,53 +39,12 @@ local function reverseWaypointsSkipLast(waypoints)
 	return reversed
 end
 
-local function getRandomFriendUserId()
-	local players = Players:GetPlayers()
-	if #players == 0 then
-		return nil
-	end
-
-	local base = players[math.random(#players)]
-	local ok, pages = pcall(function()
-		return Players:GetFriendsAsync(base.UserId)
-	end)
-	if not ok then
-		return nil
-	end
-
-	local list = {}
-	for _, f in ipairs(pages:GetCurrentPage()) do
-		list[#list + 1] = f
-	end
-	if #list == 0 then
-		return nil
-	end
-
-	return list[math.random(#list)].Id
-end
-
-local function applyRandomFriendAppearance(humanoid)
-	local userId = getRandomFriendUserId()
-	if not userId then
-		return
-	end
-
-	task.spawn(function()
-		local ok, desc = pcall(function()
-			return Players:GetHumanoidDescriptionFromUserId(userId)
-		end)
-		if ok and desc and humanoid and humanoid.Parent then
-			humanoid:ApplyDescription(desc)
-		end
-	end)
-end
-
 function NPC.new(context)
 	local self = setmetatable({
 		seat = context.seat,
 		hitbox = context.hitbox,
 
-		model = spawnModel(),
+		model = Utils:spawnModel(),
 		humanoid = nil,
 
 		enterWaypoints = nil,
@@ -110,15 +60,14 @@ function NPC.new(context)
 		serveRayTask = nil,
 	}, NPC)
 
-	self.humanoid = self.model:FindFirstChildOfClass("Humanoid")
-	self.model:SetPrimaryPartCFrame(NPCSpawn.CFrame)
-
-	if self.humanoid then
-		applyRandomFriendAppearance(self.humanoid)
+	if self.model then
+		self.humanoid = self.model:FindFirstChildOfClass("Humanoid")
 	end
 
 	self:_enterShop()
-	self:_startStateLoop()
+	if self.state ~= State.DEAD then
+		self:_startStateLoop()
+	end
 
 	return self
 end
