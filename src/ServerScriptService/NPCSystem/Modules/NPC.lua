@@ -11,7 +11,6 @@ local EAT_TIME = 2
 
 local SERVE_BOX_SIZE = Vector3.new(2, 2, 3)
 local SERVE_BOX_OFFSET = CFrame.new(0, -0.6, -2)
-local SERVE_INTERVAL = 2
 
 local PATH_PARAMS = {
 	AgentRadius = 3,
@@ -51,22 +50,25 @@ function NPC.new(context)
 
 		state = State.ENTERING,
 		stateTimeLeft = 0,
-		stateLoopRunning = false,
 
 		food = nil,
 		foodWeld = nil,
 
-		serveBoxTask = nil,
+		serveParams = nil,
 	}, NPC)
 
 	if self.model then
 		self.humanoid = self.model:FindFirstChildOfClass("Humanoid")
+		local params = OverlapParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = {
+			self.model,
+			self.seat,
+		}
+		self.serveParams = params
 	end
 
 	self:_enterShop()
-	if self.state ~= State.DEAD then
-		self:_startStateLoop()
-	end
 
 	return self
 end
@@ -98,29 +100,19 @@ function NPC:_setState(newState, time)
 	end
 end
 
-function NPC:_startStateLoop()
-	if self.stateLoopRunning then
+function NPC:TickCountdown()
+	if self.state == State.DEAD then
 		return
 	end
-	self.stateLoopRunning = true
 
-	task.spawn(function()
-		while self.model and self.state ~= State.DEAD do
-			if self.stateTimeLeft > 0 then
-				if self.humanoid then
-					self.humanoid.DisplayName = string.format("%s (%ds)", self.state, self.stateTimeLeft)
-				end
-				task.wait(1)
-				self.stateTimeLeft -= 1
-			else
-				if self.state == State.WAITING_FOOD or self.state == State.EATING then
-					self:_setState(State.LEAVING)
-				else
-					task.wait(0.2)
-				end
-			end
+	if self.stateTimeLeft > 0 then
+		if self.humanoid then
+			self.humanoid.DisplayName = string.format("%s (%ds)", self.state, self.stateTimeLeft)
 		end
-	end)
+		self.stateTimeLeft -= 1
+	elseif self.state == State.WAITING_FOOD or self.state == State.EATING then
+		self:_setState(State.LEAVING)
+	end
 end
 
 function NPC:_computePath(startPos, goalPos)
@@ -190,63 +182,39 @@ function NPC:_sit()
 	end
 
 	self:_setState(State.WAITING_FOOD, WAIT_FOOD_TIME)
-	self:_startServeBox()
 end
 
-function NPC:_startServeBox()
-	if self.serveBoxTask then
+function NPC:TryServe()
+	if self.state ~= State.WAITING_FOOD then
 		return
 	end
 
-	if not self.model.PrimaryPart then
+	local primary = self.model and self.model.PrimaryPart
+	if not primary or not self.serveParams then
 		return
 	end
 
-	local params = OverlapParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = {
-		self.model,
-		self.seat,
-	}
+	local boxCFrame = primary.CFrame * SERVE_BOX_OFFSET
+	local parts = workspace:GetPartBoundsInBox(boxCFrame, SERVE_BOX_SIZE, self.serveParams)
 
-	self.serveBoxTask = task.spawn(function()
-		RunService.Heartbeat:Wait()
-
-		while self.model and self.state == State.WAITING_FOOD do
-			local primary = self.model.PrimaryPart
-			if not primary then
-				break
-			end
-			local boxCFrame = primary.CFrame * SERVE_BOX_OFFSET
-
-			local parts = workspace:GetPartBoundsInBox(boxCFrame, SERVE_BOX_SIZE, params)
-
-			for _, part in ipairs(parts) do
-				local model = part:FindFirstAncestorOfClass("Model")
-				if
-					model
-					and CollectionService:HasTag(model, "Ramen")
-					and model:GetAttribute("Completed") == true
-					and model:GetAttribute("BeingDragged") ~= true
-				then
-					self.serveBoxTask = nil
-
-					self:_setState(State.SERVING)
-					RunService.Heartbeat:Wait()
-
-					if self.state == State.SERVING then
-						self:_serve(model)
-					end
-
-					return
+	for _, part in ipairs(parts) do
+		local model = part:FindFirstAncestorOfClass("Model")
+		if
+			model
+			and CollectionService:HasTag(model, "Ramen")
+			and model:GetAttribute("Completed") == true
+			and model:GetAttribute("BeingDragged") ~= true
+		then
+			self:_setState(State.SERVING)
+			task.spawn(function()
+				RunService.Heartbeat:Wait()
+				if self.state == State.SERVING then
+					self:_serve(model)
 				end
-			end
-
-			task.wait(SERVE_INTERVAL)
+			end)
+			return
 		end
-
-		self.serveBoxTask = nil
-	end)
+	end
 end
 
 function NPC:_serve(ramenModel)

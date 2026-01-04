@@ -2,11 +2,14 @@ local Utils = script.Parent.Utils
 local EventBus = require(Utils.EventBus)
 
 local NPC = require(script.Modules.NPC)
+local NPCManager = require(script.Modules.NPCManager)
 
 local on = EventBus.on
 local emit = EventBus.emit
 
 local TablesFolder = workspace:WaitForChild("NPCSystem")
+
+NPCManager.Start()
 
 local function findAvailableSeat()
 	local candidates = {}
@@ -65,7 +68,10 @@ task.spawn(function()
 			continue
 		end
 
-		NPC.new({ seat = result.seat, hitbox = result.hitbox })
+		local npc = NPC.new({ seat = result.seat, hitbox = result.hitbox })
+		if npc and npc.state ~= "DEAD" then
+			NPCManager.Register(npc)
+		end
 
 		task.wait(math.random(1, 3))
 	end
