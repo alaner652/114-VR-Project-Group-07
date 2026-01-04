@@ -1,24 +1,30 @@
 local PathfindingService = game:GetService("PathfindingService")
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
-
+local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local NPCFolder = ReplicatedStorage:WaitForChild("NPCs")
 
+local NPCFolder = ReplicatedStorage:WaitForChild("NPCs")
 local NPCSpawn = workspace:WaitForChild("NPCSystem"):WaitForChild("NPCSpawn")
 local NPCContainer = workspace:WaitForChild("NPCs")
 
 local WAIT_FOOD_TIME = 120
-local EAT_TIME = 20
+local EAT_TIME = 2
+
+local SERVE_BOX_SIZE = Vector3.new(4, 2, 3)
+local SERVE_BOX_OFFSET = CFrame.new(0, -0.6, -2)
+local SERVE_INTERVAL = 2
 
 local PATH_PARAMS = {
 	AgentRadius = 3,
 	AgentHeight = 5,
 	AgentCanJump = true,
 }
+
 local State = {
 	ENTERING = "ENTERING",
 	WAITING_FOOD = "WAITING_FOOD",
+	SERVING = "SERVING",
 	EATING = "EATING",
 	LEAVING = "LEAVING",
 	DEAD = "DEAD",
@@ -26,50 +32,6 @@ local State = {
 
 local NPC = {}
 NPC.__index = NPC
-
-local function getRandomFriendUserId()
-	local players = Players:GetPlayers()
-	if #players == 0 then
-		return nil
-	end
-
-	local basePlayer = players[math.random(#players)]
-
-	local ok, pages = pcall(function()
-		return Players:GetFriendsAsync(basePlayer.UserId)
-	end)
-	if not ok then
-		return nil
-	end
-
-	local friends = {}
-	for _, friend in ipairs(pages:GetCurrentPage()) do
-		table.insert(friends, friend)
-	end
-
-	if #friends == 0 then
-		return nil
-	end
-
-	return friends[math.random(#friends)].Id
-end
-
-local function applyRandomFriendAppearance(humanoid)
-	local userId = getRandomFriendUserId()
-	if not userId then
-		return
-	end
-
-	task.spawn(function()
-		local ok, desc = pcall(function()
-			return Players:GetHumanoidDescriptionFromUserId(userId)
-		end)
-
-		if ok and desc and humanoid and humanoid.Parent then
-			humanoid:ApplyDescription(desc)
-		end
-	end)
-end
 
 local function spawnModel()
 	local rig = NPCFolder:WaitForChild("Rig")
@@ -86,16 +48,45 @@ local function reverseWaypointsSkipLast(waypoints)
 	return reversed
 end
 
-local function removeDraggableTagRecursive(model: Model)
-	if CollectionService:HasTag(model, "Draggable") then
-		CollectionService:RemoveTag(model, "Draggable")
+local function getRandomFriendUserId()
+	local players = Players:GetPlayers()
+	if #players == 0 then
+		return nil
 	end
 
-	for _, inst in ipairs(model:GetDescendants()) do
-		if CollectionService:HasTag(inst, "Draggable") then
-			CollectionService:RemoveTag(inst, "Draggable")
-		end
+	local base = players[math.random(#players)]
+	local ok, pages = pcall(function()
+		return Players:GetFriendsAsync(base.UserId)
+	end)
+	if not ok then
+		return nil
 	end
+
+	local list = {}
+	for _, f in ipairs(pages:GetCurrentPage()) do
+		list[#list + 1] = f
+	end
+	if #list == 0 then
+		return nil
+	end
+
+	return list[math.random(#list)].Id
+end
+
+local function applyRandomFriendAppearance(humanoid)
+	local userId = getRandomFriendUserId()
+	if not userId then
+		return
+	end
+
+	task.spawn(function()
+		local ok, desc = pcall(function()
+			return Players:GetHumanoidDescriptionFromUserId(userId)
+		end)
+		if ok and desc and humanoid and humanoid.Parent then
+			humanoid:ApplyDescription(desc)
+		end
+	end)
 end
 
 function NPC.new(context)
@@ -113,8 +104,10 @@ function NPC.new(context)
 		stateTimeLeft = 0,
 		stateLoopRunning = false,
 
+		food = nil,
 		foodWeld = nil,
-		retryCount = 0,
+
+		serveRayTask = nil,
 	}, NPC)
 
 	self.humanoid = self.model:FindFirstChildOfClass("Humanoid")
@@ -197,12 +190,14 @@ function NPC:_followWaypoints(waypoints, onSuccess)
 				self.moving = false
 				return
 			end
+
 			self.humanoid:MoveTo(wp.Position)
 			if not self.humanoid.MoveToFinished:Wait() then
 				self.moving = false
 				return
 			end
 		end
+
 		self.moving = false
 		if onSuccess then
 			onSuccess()
@@ -212,6 +207,7 @@ end
 
 function NPC:_enterShop()
 	local waypoints = self:_computePath(NPCSpawn.Position, self.hitbox.Position)
+
 	if not waypoints then
 		self:Destroy()
 		return
@@ -240,53 +236,101 @@ function NPC:_sit()
 		self.humanoid.Sit = true
 	end
 
-	self:_bindServeDetector()
 	self:_setState(State.WAITING_FOOD, WAIT_FOOD_TIME)
+	self:_startServeBox()
 end
 
-function NPC:_bindServeDetector()
-	self.hitbox.Touched:Connect(function(hit)
-		if self.state ~= State.WAITING_FOOD then
-			return
+function NPC:_startServeBox()
+	if self.serveBoxTask then
+		return
+	end
+
+	local root = self.model.HumanoidRootPart
+	if not root then
+		return
+	end
+
+	local box = Instance.new("Part")
+	box.Name = "__ServeBox"
+	box.Anchored = true
+	box.CanCollide = false
+	box.CanTouch = false
+	box.CastShadow = false
+	box.Transparency = 0.5
+	box.Size = SERVE_BOX_SIZE
+	box.Parent = workspace
+
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = {
+		self.model,
+		self.seat,
+		box,
+	}
+
+	self.serveBoxTask = task.spawn(function()
+		RunService.Heartbeat:Wait()
+
+		while self.model and self.state == State.WAITING_FOOD do
+			if not self.model.PrimaryPart then
+				break
+			end
+			box.CFrame = self.model.PrimaryPart.CFrame * SERVE_BOX_OFFSET
+
+			local parts = workspace:GetPartsInPart(box, params)
+
+			for _, part in ipairs(parts) do
+				local model = part:FindFirstAncestorOfClass("Model")
+				if
+					model
+					and CollectionService:HasTag(model, "Ramen")
+					and model:GetAttribute("Completed") == true
+					and model:GetAttribute("BeingDragged") ~= true
+				then
+					box:Destroy()
+					self.serveBoxTask = nil
+
+					self:_setState(State.SERVING)
+					RunService.Heartbeat:Wait()
+
+					if self.state == State.SERVING then
+						self:_serve(model)
+					end
+
+					return
+				end
+			end
+
+			task.wait(SERVE_INTERVAL)
 		end
 
-		local model = hit:FindFirstAncestorOfClass("Model")
-		if not model then
-			return
+		if box and box.Parent then
+			box:Destroy()
 		end
-
-		if not CollectionService:HasTag(model, "Ramen") then
-			return
-		end
-
-		if model:GetAttribute("Completed") ~= true then
-			return
-		end
-
-		removeDraggableTagRecursive(model)
-		self:_serve(model)
+		self.serveBoxTask = nil
 	end)
 end
 
 function NPC:_serve(ramenModel)
 	local npcRoot = self.model.PrimaryPart
 	local ramenRoot = ramenModel.PrimaryPart
-
-	if npcRoot and ramenRoot then
-		local weld = Instance.new("Motor6D")
-		weld.Name = "FoodWeld"
-		weld.Part0 = npcRoot
-		weld.Part1 = ramenRoot
-		weld.C0 = CFrame.new(0, -1.5, -2)
-		weld.Parent = npcRoot
-		self.foodWeld = weld
+	if not npcRoot or not ramenRoot then
+		return
 	end
+
+	local weld = Instance.new("WeldConstraint")
+	weld.Name = "FoodWeld"
+	weld.Part0 = npcRoot
+	weld.Part1 = ramenRoot
+	weld.Parent = ramenRoot
+
+	self.food = ramenModel
+	self.foodWeld = weld
 
 	self:_setState(State.EATING, EAT_TIME)
 end
 
 function NPC:_onWaitingFood() end
-
 function NPC:_onEating() end
 
 function NPC:_onLeaving()
@@ -296,17 +340,28 @@ function NPC:_onLeaving()
 	end
 
 	local root = self.model.PrimaryPart
-	if root then
-		local seatWeld = root:FindFirstChild("SeatWeld")
-		if seatWeld then
-			seatWeld:Destroy()
-		end
+	if not root then
+		self:Destroy()
+		return
 	end
 
-	if self.foodWeld then
-		self.foodWeld:Destroy()
-		self.foodWeld = nil
+	if self.food then
+		self.food:Destroy()
+		self.food = nil
 	end
+	self.foodWeld = nil
+
+	local seatWeld = root:FindFirstChild("SeatWeld")
+	if seatWeld then
+		seatWeld:Destroy()
+	end
+
+	self.moving = false
+	if self.humanoid then
+		self.humanoid:MoveTo(self.humanoid.RootPart.Position)
+		RunService.Heartbeat:Wait()
+	end
+	root.CFrame = self.hitbox.CFrame
 
 	if not self.enterWaypoints then
 		self:Destroy()
