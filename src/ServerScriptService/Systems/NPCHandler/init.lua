@@ -3,11 +3,7 @@ local Players = game:GetService("Players")
 
 print("[NPCSystem] Init starting")
 
-local TablesFolder = workspace:WaitForChild("NPCSystem", 10)
-if not TablesFolder then
-	warn("[NPCSystem] workspace.NPCSystem not found; spawner disabled")
-	return
-end
+local TablesFolder = workspace:WaitForChild("NPCSystem"):WaitForChild("Tables")
 
 local NPC = require(script.Modules.NPC)
 
