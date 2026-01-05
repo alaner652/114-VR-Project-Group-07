@@ -8,34 +8,185 @@ local TablesFolder = workspace:WaitForChild("NPCSystem")
 -- Seat Utils
 -- =====================
 
-local function findAvailableSeat()
-	local candidates = {}
+local availableSeats = {}
+local seatIndexBySeat = {}
+local seatMetaBySeat = {}
+local seatConnections = {}
+local tableConnections = {}
+local DEBUG_POOL_LOG = true
+local lastPoolLog = 0
 
-	for _, tableModel in ipairs(TablesFolder:GetChildren()) do
-		local seatsFolder = tableModel:FindFirstChild("Seats")
-		local hitbox = tableModel:FindFirstChild("Hitbox")
+local function logPool(reason)
+	if not DEBUG_POOL_LOG then
+		return
+	end
+	local now = os.clock()
+	if now - lastPoolLog < 0.5 then
+		return
+	end
+	lastPoolLog = now
+	print(("[NPCSystem] SeatPool %s | available=%d"):format(reason, #availableSeats))
+end
 
-		if seatsFolder and hitbox then
-			for _, seat in ipairs(seatsFolder:GetChildren()) do
-				if seat:IsA("BasePart") and not seat:GetAttribute("Active") then
-					table.insert(candidates, {
-						seat = seat,
-						hitbox = hitbox,
-						table = tableModel,
-					})
-				end
-			end
+local function addSeatToPool(seat)
+	if seatIndexBySeat[seat] then
+		return
+	end
+	if not seatMetaBySeat[seat] then
+		return
+	end
+	if seat:GetAttribute("Active") == true then
+		return
+	end
+
+	availableSeats[#availableSeats + 1] = seat
+	seatIndexBySeat[seat] = #availableSeats
+	logPool("add")
+end
+
+local function removeSeatFromPool(seat)
+	local index = seatIndexBySeat[seat]
+	if not index then
+		return
+	end
+
+	local lastIndex = #availableSeats
+	local lastSeat = availableSeats[lastIndex]
+
+	availableSeats[index] = lastSeat
+	availableSeats[lastIndex] = nil
+	seatIndexBySeat[seat] = nil
+
+	if lastSeat and lastSeat ~= seat then
+		seatIndexBySeat[lastSeat] = index
+	end
+	logPool("remove")
+end
+
+local function cleanupSeat(seat)
+	removeSeatFromPool(seat)
+	seatMetaBySeat[seat] = nil
+
+	local conns = seatConnections[seat]
+	if conns then
+		for _, conn in ipairs(conns) do
+			conn:Disconnect()
+		end
+		seatConnections[seat] = nil
+	end
+end
+
+local function registerSeat(seat, hitbox, tableModel)
+	if seatMetaBySeat[seat] then
+		return
+	end
+
+	seatMetaBySeat[seat] = {
+		seat = seat,
+		hitbox = hitbox,
+		table = tableModel,
+	}
+
+	if seat:GetAttribute("Active") ~= true then
+		addSeatToPool(seat)
+	end
+
+	local conns = {}
+
+	conns[#conns + 1] = seat:GetAttributeChangedSignal("Active"):Connect(function()
+		if seat:GetAttribute("Active") == true then
+			removeSeatFromPool(seat)
+		else
+			addSeatToPool(seat)
+		end
+	end)
+
+	conns[#conns + 1] = seat.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			cleanupSeat(seat)
+		end
+	end)
+
+	seatConnections[seat] = conns
+end
+
+local function registerTable(tableModel)
+	if tableConnections[tableModel] then
+		return
+	end
+
+	local seatsFolder = tableModel:FindFirstChild("Seats")
+	local hitbox = tableModel:FindFirstChild("Hitbox")
+	if not seatsFolder or not hitbox then
+		return
+	end
+
+	for _, seat in ipairs(seatsFolder:GetChildren()) do
+		if seat:IsA("BasePart") then
+			registerSeat(seat, hitbox, tableModel)
 		end
 	end
 
-	if #candidates == 0 then
-		return nil
+	local conns = {}
+
+	conns[#conns + 1] = seatsFolder.ChildAdded:Connect(function(child)
+		if child:IsA("BasePart") then
+			registerSeat(child, hitbox, tableModel)
+		end
+	end)
+
+	conns[#conns + 1] = seatsFolder.ChildRemoved:Connect(function(child)
+		if child:IsA("BasePart") then
+			cleanupSeat(child)
+		end
+	end)
+
+	conns[#conns + 1] = tableModel.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			for _, seat in ipairs(seatsFolder:GetChildren()) do
+				if seat:IsA("BasePart") then
+					cleanupSeat(seat)
+				end
+			end
+			for _, conn in ipairs(conns) do
+				conn:Disconnect()
+			end
+			tableConnections[tableModel] = nil
+		end
+	end)
+
+	tableConnections[tableModel] = conns
+end
+
+local function findAvailableSeat()
+	while #availableSeats > 0 do
+		local index = math.random(#availableSeats)
+		local seat = availableSeats[index]
+		removeSeatFromPool(seat)
+
+		local meta = seatMetaBySeat[seat]
+		if seat and seat.Parent and meta and meta.hitbox and meta.hitbox.Parent then
+			seat:SetAttribute("Active", true)
+			return meta
+		end
+
+		cleanupSeat(seat)
 	end
 
-	local choice = candidates[math.random(#candidates)]
-	choice.seat:SetAttribute("Active", true)
-	return choice
+	return nil
 end
+
+for _, tableModel in ipairs(TablesFolder:GetChildren()) do
+	if tableModel:IsA("Model") then
+		registerTable(tableModel)
+	end
+end
+
+TablesFolder.ChildAdded:Connect(function(child)
+	if child:IsA("Model") then
+		registerTable(child)
+	end
+end)
 
 -- =====================
 -- Spawn Loop
