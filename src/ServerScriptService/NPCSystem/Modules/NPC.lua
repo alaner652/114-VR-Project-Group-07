@@ -5,7 +5,17 @@ local RunService = game:GetService("RunService")
 
 local Utils = require(script.Parent.Utils)
 
-local NPCSpawn = workspace:WaitForChild("NPCSystem"):WaitForChild("NPCSpawn")
+local warnedSpawn = false
+
+local function getNpcSpawn()
+	local npcSystem = workspace:FindFirstChild("NPCSystem")
+	local spawn = npcSystem and npcSystem:FindFirstChild("NPCSpawn") or nil
+	if not spawn and not warnedSpawn then
+		warnedSpawn = true
+		warn("[NPCSystem] Missing workspace.NPCSystem.NPCSpawn")
+	end
+	return spawn
+end
 
 -- =====================
 -- Config
@@ -105,6 +115,8 @@ function NPC.new(context)
 		model = model,
 		humanoid = model:FindFirstChildOfClass("Humanoid"),
 
+		spawnCFrame = nil,
+
 		enterWaypoints = nil,
 		lastWaypointIndex = 1,
 		retryCount = 0,
@@ -130,8 +142,17 @@ function NPC.new(context)
 		return nil
 	end
 
+	local npcSpawn = getNpcSpawn()
+	if not npcSpawn then
+		logWarn(self.id, "Missing NPCSpawn")
+		self:Destroy()
+		return nil
+	end
+
+	self.spawnCFrame = npcSpawn.CFrame
+
 	-- Spawn at the entry point.
-	self.model:SetPrimaryPartCFrame(NPCSpawn.CFrame)
+	self.model:SetPrimaryPartCFrame(self.spawnCFrame)
 
 	local params = OverlapParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
@@ -331,7 +352,13 @@ end
 -- =====================
 
 function NPC:_enterShop()
-	local waypoints = self:_computePath(NPCSpawn.Position, self.hitbox.Position)
+	if not self.spawnCFrame then
+		logWarn(self.id, "Missing spawn CFrame")
+		self:Destroy()
+		return
+	end
+
+	local waypoints = self:_computePath(self.spawnCFrame.Position, self.hitbox.Position)
 	if not waypoints then
 		logWarn(self.id, "Path compute failed (enter)")
 		self:Destroy()

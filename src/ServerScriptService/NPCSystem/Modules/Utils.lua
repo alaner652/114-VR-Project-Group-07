@@ -2,9 +2,34 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local NPCFolder = ReplicatedStorage:WaitForChild("NPCs")
-local NPCSpawn = workspace:WaitForChild("NPCSystem"):WaitForChild("NPCSpawn")
-local NPCContainer = workspace:WaitForChild("NPCs")
+local warned = {}
+
+local function warnOnce(key, msg)
+	if warned[key] then
+		return
+	end
+	warned[key] = true
+	warn(msg)
+end
+
+local function getNpcFolder()
+	return ReplicatedStorage:FindFirstChild("NPCs")
+end
+
+local function getNpcSpawn()
+	local npcSystem = workspace:FindFirstChild("NPCSystem")
+	return npcSystem and npcSystem:FindFirstChild("NPCSpawn") or nil
+end
+
+local function getNpcContainer()
+	local container = workspace:FindFirstChild("NPCs")
+	if not container then
+		container = Instance.new("Folder")
+		container.Name = "NPCs"
+		container.Parent = workspace
+	end
+	return container
+end
 
 local Utils = {}
 
@@ -68,23 +93,43 @@ local function applyRandomFriendAppearance(humanoid)
 end
 
 function Utils:spawnModel()
-	local rig = NPCFolder:WaitForChild("Rig")
+	local npcFolder = getNpcFolder()
+	if not npcFolder then
+		warnOnce("npcFolder", "[NPCSystem] Missing ReplicatedStorage.NPCs")
+		return nil
+	end
+
+	local rig = npcFolder:FindFirstChild("Rig")
+	if not rig then
+		warnOnce("npcRig", "[NPCSystem] Missing ReplicatedStorage.NPCs.Rig")
+		return nil
+	end
+
+	local npcSpawn = getNpcSpawn()
+	if not npcSpawn then
+		warnOnce("npcSpawn", "[NPCSystem] Missing workspace.NPCSystem.NPCSpawn")
+		return nil
+	end
+
 	local model = rig:Clone()
 
 	if not model.PrimaryPart then
 		model.PrimaryPart = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChildWhichIsA("BasePart")
 	end
 
+	if not model.PrimaryPart then
+		warnOnce("npcPrimaryPart", "[NPCSystem] NPC rig missing PrimaryPart")
+		return nil
+	end
+
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		model.Parent = NPCContainer
-		model:SetPrimaryPartCFrame(NPCSpawn.CFrame)
+		model.Parent = getNpcContainer()
+		model:SetPrimaryPartCFrame(npcSpawn.CFrame)
 
-		if humanoid then
-			humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
-			configureHumanoid(humanoid)
-			applyRandomFriendAppearance(humanoid)
-		end
+		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+		configureHumanoid(humanoid)
+		applyRandomFriendAppearance(humanoid)
 	end
 
 	return model

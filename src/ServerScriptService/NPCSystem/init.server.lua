@@ -1,9 +1,15 @@
 -- NPC spawner with a seat pool and player-scaled timing.
 local Players = game:GetService("Players")
 
-local NPC = require(script.Modules.NPC)
+print("[NPCSystem] Init starting")
 
-local TablesFolder = workspace:WaitForChild("NPCSystem")
+local TablesFolder = workspace:WaitForChild("NPCSystem", 10)
+if not TablesFolder then
+	warn("[NPCSystem] workspace.NPCSystem not found; spawner disabled")
+	return
+end
+
+local NPC = require(script.Modules.NPC)
 
 -- =====================
 -- Seat Pool
@@ -16,7 +22,10 @@ local seatMetaBySeat = {}
 local seatConnections = {}
 local tableConnections = {}
 local DEBUG_POOL_LOG = true
+local DEBUG_TABLE_LOG = true
 local lastPoolLog = 0
+local lastNoSeatLog = 0
+local warnedTables = {}
 
 local function logPool(reason)
 	if not DEBUG_POOL_LOG then
@@ -120,13 +129,26 @@ local function registerTable(tableModel)
 	local seatsFolder = tableModel:FindFirstChild("Seats")
 	local hitbox = tableModel:FindFirstChild("Hitbox")
 	if not seatsFolder or not hitbox then
+		if not warnedTables[tableModel] then
+			warnedTables[tableModel] = true
+			warn(("[NPCSystem] Table %s missing Seats or Hitbox"):format(tableModel.Name))
+		end
 		return
 	end
 
+	local seatCount = 0
+	local activeCount = 0
 	for _, seat in ipairs(seatsFolder:GetChildren()) do
 		if seat:IsA("BasePart") then
+			seatCount += 1
+			if seat:GetAttribute("Active") == true then
+				activeCount += 1
+			end
 			registerSeat(seat, hitbox, tableModel)
 		end
+	end
+	if DEBUG_TABLE_LOG then
+		print(("[NPCSystem] Table %s seats=%d active=%d"):format(tableModel.Name, seatCount, activeCount))
 	end
 
 	local conns = {}
@@ -184,6 +206,8 @@ for _, tableModel in ipairs(TablesFolder:GetChildren()) do
 	end
 end
 
+print(("[NPCSystem] Tables ready | available seats=%d"):format(#availableSeats))
+
 TablesFolder.ChildAdded:Connect(function(child)
 	if child:IsA("Model") then
 		registerTable(child)
@@ -224,9 +248,15 @@ local function getSpawnInterval()
 end
 
 task.spawn(function()
+	print("[NPCSystem] Spawn loop started")
 	while true do
 		local result = findAvailableSeat()
 		if not result then
+			local now = os.clock()
+			if now - lastNoSeatLog > 5 then
+				lastNoSeatLog = now
+				print("[NPCSystem] No available seats")
+			end
 			task.wait(SPAWN_IDLE_CHECK)
 			continue
 		end

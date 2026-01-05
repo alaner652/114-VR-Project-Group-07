@@ -89,23 +89,48 @@ end
 
 Players.PlayerAdded:Connect(bindPlayer)
 
-local NPC_FOLDER = workspace:WaitForChild("NPCs")
+local npcFolderBound = false
 
 local function setupNPC(npcModel: Model)
 	trackModel(npcModel, COLLISION_GROUP.NPC)
 end
 
-for _, npc in ipairs(NPC_FOLDER:GetChildren()) do
-	if npc:IsA("Model") then
-		setupNPC(npc)
+local function bindNpcFolder(folder: Instance)
+	if npcFolderBound then
+		return
 	end
+	npcFolderBound = true
+
+	for _, npc in ipairs(folder:GetChildren()) do
+		if npc:IsA("Model") then
+			setupNPC(npc)
+		end
+	end
+
+	folder.ChildAdded:Connect(function(child)
+		if child:IsA("Model") then
+			setupNPC(child)
+		end
+	end)
 end
 
-NPC_FOLDER.ChildAdded:Connect(function(child)
-	if child:IsA("Model") then
-		setupNPC(child)
+local function tryBindNpcFolder()
+	local folder = workspace:FindFirstChild("NPCs")
+	if folder then
+		bindNpcFolder(folder)
+		return true
 	end
-end)
+	return false
+end
+
+if not tryBindNpcFolder() then
+	warn("[CollisionHandler] workspace.NPCs not found; waiting")
+	workspace.ChildAdded:Connect(function(child)
+		if child.Name == "NPCs" then
+			bindNpcFolder(child)
+		end
+	end)
+end
 
 local function onDraggableAdded(inst: Instance)
 	local model = findRootModel(inst)
