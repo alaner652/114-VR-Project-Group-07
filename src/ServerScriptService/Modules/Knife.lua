@@ -1,3 +1,4 @@
+-- Cuts ingredients when the knife blade touches them.
 local Knife = {}
 Knife.__index = Knife
 
@@ -14,6 +15,7 @@ function Knife.new(bladePart: BasePart)
 end
 
 function Knife:_initTouched()
+	-- Swap ingredient models when the player is dragging the knife.
 	self.connection = self.blade.Touched:Connect(function(part: BasePart)
 		local ingredient = part:FindFirstAncestorOfClass("Model")
 		if not ingredient then

@@ -1,3 +1,4 @@
+-- NPC spawner with a seat pool and player-scaled spawn timing.
 local Players = game:GetService("Players")
 
 local NPC = require(script.Modules.NPC)
@@ -8,6 +9,7 @@ local TablesFolder = workspace:WaitForChild("NPCSystem")
 -- Seat Utils
 -- =====================
 
+-- Seat pool for O(1) random selection and release.
 local availableSeats = {}
 local seatIndexBySeat = {}
 local seatMetaBySeat = {}

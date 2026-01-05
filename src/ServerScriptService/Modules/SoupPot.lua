@@ -1,3 +1,4 @@
+-- Proximity prompt that activates soup when the player drops an ingredient.
 local ServerScriptService = game:GetService("ServerScriptService")
 local GetDraggingObject = ServerScriptService:WaitForChild("GetDraggingObject")
 
@@ -16,6 +17,7 @@ function SoupPot.new(model: Model)
 end
 
 function SoupPot:_init()
+	-- Build the prompt and disable it while the pot is dragged.
 	local prompt = self.prompt
 	prompt.ObjectText = self.model.Name
 	prompt.ActionText = "Interact"

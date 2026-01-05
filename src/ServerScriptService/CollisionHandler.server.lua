@@ -1,3 +1,4 @@
+-- Keeps collision groups consistent for players, NPCs, and draggable models.
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 
@@ -35,6 +36,7 @@ local function untrackModel(model: Model)
 end
 
 local function trackModel(model: Model, groupName: string)
+	-- Apply to current parts and keep new parts in sync.
 	applyCollisionGroup(model, groupName)
 
 	local info = trackedModels[model]

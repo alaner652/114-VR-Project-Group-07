@@ -1,3 +1,4 @@
+-- Adjust humanoid states for this experience.
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
@@ -8,6 +9,7 @@ local DISABLED_STATES = {
 	Enum.HumanoidStateType.Ragdoll,
 }
 
+-- Lower the jump height and disable unwanted states.
 humanoid.JumpHeight = 0.1
 
 for _, state in ipairs(DISABLED_STATES) do

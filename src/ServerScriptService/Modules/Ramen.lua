@@ -1,3 +1,4 @@
+-- Tracks ramen ingredients and marks the bowl completed.
 local ServerScriptService = game:GetService("ServerScriptService")
 local CollectionService = game:GetService("CollectionService")
 
@@ -24,6 +25,7 @@ local function getBowlPart(model: Model): BasePart?
 end
 
 local function unlockAllIngredients(self)
+	-- Debug helper to mark all ingredients complete.
 	for key, _ in pairs(self.recipe) do
 		if not self.unlocked[key] then
 			self:_unlock(key)
@@ -73,6 +75,7 @@ function Ramen.new(model: Model)
 end
 
 function Ramen:_cacheRecipe()
+	-- Build the recipe list and hide all ingredient parts.
 	for _, ingredient in ipairs(self.ingredientsFolder:GetChildren()) do
 		if ingredient:IsA("Model") then
 			local key = ingredient:GetAttribute("IngredientType") or ingredient.Name
@@ -98,6 +101,7 @@ function Ramen:_cacheRecipe()
 end
 
 function Ramen:_bindTouch()
+	-- Unlock ingredients when dragged items touch the bowl.
 	local bowlPart = getBowlPart(self.model)
 	if not bowlPart then
 		warn(("Ramen %s has no primary BasePart"):format(self.model.Name))

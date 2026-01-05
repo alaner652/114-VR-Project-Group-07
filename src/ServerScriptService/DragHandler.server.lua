@@ -1,3 +1,4 @@
+-- Server-side drag ownership and state tracking.
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 
@@ -29,6 +30,7 @@ local function getDraggingPlayerByObject(instance: Instance)
 end
 
 local function stopDrag(player: Player)
+	-- Clear network ownership and the BeingDragged flag.
 	local current = PlayerDragging[player]
 	if not current then
 		return
@@ -45,6 +47,7 @@ local function stopDrag(player: Player)
 end
 
 local function startDrag(player: Player, object: BasePart)
+	-- Grant ownership if the object is not already dragged.
 	local root = getRoot(object)
 	if not root then
 		return false

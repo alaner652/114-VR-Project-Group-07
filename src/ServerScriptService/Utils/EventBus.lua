@@ -1,3 +1,4 @@
+-- Simple in-memory event bus for local scripts.
 local EventBus = {}
 
 local events = {}
@@ -8,6 +9,7 @@ function EventBus.on(eventName, callback)
 	end
 	table.insert(events[eventName], callback)
 
+	-- Return an unsubscribe function.
 	return function()
 		for i, cb in ipairs(events[eventName]) do
 			if cb == callback then

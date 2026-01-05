@@ -1,3 +1,4 @@
+-- Auto-initialize tagged models by mapping tags to modules.
 local CollectionService = game:GetService("CollectionService")
 
 local modulesRoot = script.Parent.Modules
@@ -5,6 +6,7 @@ local modulesRoot = script.Parent.Modules
 local registry = {}
 
 local function collectModules(root)
+	-- Scan module folders and build the tag registry.
 	for _, inst in ipairs(root:GetChildren()) do
 		if inst:IsA("ModuleScript") then
 			local tag = inst.Name

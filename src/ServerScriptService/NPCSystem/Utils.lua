@@ -1,3 +1,4 @@
+-- NPC model helpers (spawn, appearance, and humanoid setup).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -14,6 +15,7 @@ local DISABLED_STATES = {
 }
 
 local function configureHumanoid(humanoid)
+	-- Disable ragdoll-style states for NPCs.
 	for _, state in ipairs(DISABLED_STATES) do
 		humanoid:SetStateEnabled(state, false)
 	end

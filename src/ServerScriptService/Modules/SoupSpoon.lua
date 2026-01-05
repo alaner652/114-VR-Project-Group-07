@@ -1,3 +1,4 @@
+-- Controls spoon visuals based on the Active attribute.
 local SoupSpoon = {}
 SoupSpoon.__index = SoupSpoon
 
@@ -15,6 +16,7 @@ function SoupSpoon.new(model: Model)
 end
 
 function SoupSpoon:_init()
+	-- Toggle transparency when soup is active.
 	self.connection = self.model:GetAttributeChangedSignal("Active"):Connect(function()
 		local active = self.model:GetAttribute("Active") == true
 		self.below.Transparency = active and 0 or 1

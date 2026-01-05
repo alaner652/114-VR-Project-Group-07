@@ -1,3 +1,4 @@
+-- Client-side drag controller: raycast, request server ownership, and drive attachments.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -126,6 +127,7 @@ local function tryStartDrag(candidate: Part?): boolean
 end
 
 UserInputService.InputBegan:Connect(function(input, processed)
+	-- Click to pick up or drop.
 	if processed or input.UserInputType ~= Enum.UserInputType.MouseButton1 then
 		return
 	end
@@ -154,6 +156,7 @@ UserInputService.InputChanged:Connect(function(input, processed)
 end)
 
 ForcePickupRemote.OnClientEvent:Connect(function(object: Part)
+	-- Server can force a pickup (e.g., after spawning an item).
 	if state == DragState.Dragging then
 		dropObject()
 		return
@@ -175,6 +178,7 @@ local function updateDragTargetAttachment(baseCF: CFrame)
 end
 
 RunService.RenderStepped:Connect(function()
+	-- Update drag target and highlight each frame.
 	local baseCF = getBaseCFrame()
 	if state == DragState.Dragging and grabbedObject then
 		updateDragTargetAttachment(baseCF)

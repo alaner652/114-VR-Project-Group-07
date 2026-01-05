@@ -7,11 +7,11 @@ local Utils = require(script.Parent.Utils)
 local NPCSpawn = workspace:WaitForChild("NPCSystem"):WaitForChild("NPCSpawn")
 
 -- =====================
--- 基本設定
+-- Config
 -- =====================
 
-local WAIT_FOOD_TIME = 120 -- 等待上菜的秒數
-local EAT_TIME = 20 -- 吃飯時間(秒)
+local WAIT_FOOD_TIME = 120 -- Seconds to wait for food.
+local EAT_TIME = 20 -- Seconds to eat.
 
 local SERVE_BOX_SIZE = Vector3.new(2, 2, 3)
 local SERVE_BOX_OFFSET = CFrame.new(0, -0.6, -2)
@@ -122,14 +122,14 @@ function NPC.new(context)
 		_tickConn = nil,
 	}, NPC)
 
-	-- 沒 Humanoid 或主零件就直接清掉，避免後續狀態壞掉
+	-- Validate required parts before continuing.
 	if not self.humanoid or not self.model.PrimaryPart then
 		logWarn(self.id, "Missing Humanoid or PrimaryPart")
 		self:Destroy()
 		return nil
 	end
 
-	-- 先放到出生點
+	-- Spawn at the entry point.
 	self.model:SetPrimaryPartCFrame(NPCSpawn.CFrame)
 
 	local params = OverlapParams.new()
@@ -200,7 +200,7 @@ function NPC:_setState(newState, time)
 	end
 end
 
--- Tick 只負責更新狀態，節拍由 _startTickLoop 控制
+-- Tick only updates state; timing is handled by _startTickLoop.
 function NPC:Tick()
 	if self.state == State.DEAD then
 		return
@@ -210,19 +210,18 @@ function NPC:Tick()
 		return
 	end
 
-	-- 方便在 Studio 直接看到狀態
+	-- Keep a readable state name for debugging.
 	self.model.Name = ("%s (%ds)"):format(self.state, math.max(0, self.timer))
 
-	-- 等待時嘗試收菜
+	-- Try to claim food while waiting.
 	if self.state == State.WAITING then
 		self:_tryServe()
 	end
 
-	-- 計時器
+	-- Countdown to leaving.
 	if self.timer > 0 then
 		self.timer -= 1
 	else
-		-- 等待/吃完時間到就離開
 		if self.state == State.WAITING or self.state == State.EATING then
 			self:_setState(State.LEAVING)
 		end
@@ -360,17 +359,15 @@ function NPC:_sit()
 		return
 	end
 
-	-- 建立座位焊接
+	-- Create a seat weld and position the NPC on the seat.
 	local weld = Instance.new("Motor6D")
 	weld.Name = "SeatWeld"
 	weld.Part0 = self.seat
 	weld.Part1 = root
 
-	-- 把 NPC 移到座位上方
 	local offsetY = (self.seat.Size.Y * 0.5) + (root.Size.Y * 0.5)
 	root.CFrame = self.seat.CFrame * CFrame.new(0, offsetY, 0)
 
-	-- 用 C0/C1 固定坐姿
 	weld.C0 = self.seat.CFrame:ToObjectSpace(root.CFrame)
 	weld.C1 = CFrame.new()
 	weld.Parent = root
@@ -428,12 +425,12 @@ function NPC:_tryServe()
 			return tryPart(index + 1)
 		end
 
-		-- 已被其他 NPC 接走就跳過
+		-- Skip if another NPC already welded this food.
 		if ramenRoot:FindFirstChild("FoodWeld") then
 			return tryPart(index + 1)
 		end
 
-		-- 用距離做 claim，避免同一碗被多個 NPC 搶走
+		-- Claim by distance to avoid multiple NPCs taking the same ramen.
 		local myDist2 = dist2(primary.Position, ramenRoot.Position)
 		local curNpc = ramenModel:GetAttribute(SERVE_CLAIM_ATTR)
 		local curDist = ramenModel:GetAttribute(SERVE_CLAIM_DIST_ATTR)
@@ -445,13 +442,13 @@ function NPC:_tryServe()
 		ramenModel:SetAttribute(SERVE_CLAIM_ATTR, self.id)
 		ramenModel:SetAttribute(SERVE_CLAIM_DIST_ATTR, myDist2)
 
-		-- 下一幀再確認，讓其他 NPC 有機會搶先
+		-- Confirm the claim on the next frame before eating.
 		self.claimedFood = ramenModel
 
 		task.spawn(function()
 			RunService.Heartbeat:Wait()
 
-			-- 狀態變了就放棄 claim
+			-- If state changed or claim lost, release.
 			if self.state ~= State.WAITING then
 				clearServeClaim(ramenModel, self.id)
 				if self.claimedFood == ramenModel then
@@ -475,7 +472,7 @@ function NPC:_tryServe()
 end
 
 function NPC:_eat(ramenModel)
-	-- 只能從等待狀態開始吃
+	-- Only start eating from the waiting state.
 	if self.state ~= State.WAITING then
 		clearServeClaim(ramenModel, self.id)
 		return
@@ -493,7 +490,7 @@ function NPC:_eat(ramenModel)
 		return
 	end
 
-	-- 已被焊住代表被別人拿走
+	-- Already welded means someone else took it.
 	if ramenRoot:FindFirstChild("FoodWeld") then
 		clearServeClaim(ramenModel, self.id)
 		if self.claimedFood == ramenModel then
@@ -502,7 +499,7 @@ function NPC:_eat(ramenModel)
 		return
 	end
 
-	-- 把拉麵焊到 NPC 身上
+	-- Weld ramen to the NPC while eating.
 	local weld = Instance.new("WeldConstraint")
 	weld.Name = "FoodWeld"
 	weld.Part0 = npcRoot
@@ -527,12 +524,12 @@ function NPC:_onLeaving()
 
 	log(self.id, "Leaving")
 
-	-- 站起來
+	-- Stand up.
 	if self.humanoid then
 		self.humanoid.Sit = false
 	end
 
-	-- 清掉餐點與 claim
+	-- Clear food and claims.
 	if self.food then
 		clearServeClaim(self.food, self.id)
 		if self.food.Parent then
@@ -541,32 +538,30 @@ function NPC:_onLeaving()
 	end
 	self.food = nil
 
-	-- 放掉可能還沒吃到的餐點 claim
 	clearServeClaim(self.claimedFood, self.id)
 	self.claimedFood = nil
 
-	-- FoodWeld 會跟著拉麵一起銷毀，這裡只清參考
+	-- FoodWeld is removed with the ramen; clear references.
 	self.foodWeld = nil
 
-	-- 清掉座位焊接
+	-- Remove seat weld.
 	if self.seatWeld and self.seatWeld.Parent then
 		self.seatWeld:Destroy()
 	end
 	self.seatWeld = nil
 
-	-- 先把角色移回出口，再走回出生點
+	-- Move to the exit before walking back out.
 	local root = self.model and self.model.PrimaryPart
 	if not root then
 		self:Destroy()
 		return
 	end
 
-	-- 等一幀再挪位置，避免碰撞卡住
 	RunService.Heartbeat:Wait()
 	root.CFrame = self.hitbox.CFrame
 	RunService.Heartbeat:Wait()
 
-	-- 沒有回程路徑就直接清掉
+	-- If no return path, destroy immediately.
 	if not self.enterWaypoints then
 		self:Destroy()
 		return
@@ -589,23 +584,23 @@ function NPC:Destroy()
 	self:_stopTickLoop()
 	log(self.id, "Destroyed")
 
-	-- 清掉 claim，避免殘留
+	-- Clear claims to avoid dangling locks.
 	clearServeClaim(self.claimedFood, self.id)
 	clearServeClaim(self.food, self.id)
 	self.claimedFood = nil
 
-	-- 釋放座位
+	-- Release the seat.
 	if self.seat then
 		self.seat:SetAttribute("Active", false)
 	end
 
-	-- 清掉模型
+	-- Destroy the model.
 	if self.model then
 		self.model:Destroy()
 		self.model = nil
 	end
 
-	-- 清掉參考
+	-- Clear references.
 	self.humanoid = nil
 	self.enterWaypoints = nil
 	self.seatWeld = nil
