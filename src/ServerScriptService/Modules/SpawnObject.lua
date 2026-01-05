@@ -1,4 +1,4 @@
--- Spawns an ingredient model on click and hands it to the player.
+-- Spawn ingredients on click and hand them to the player.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ForcePickupRemote = ReplicatedStorage:WaitForChild("ForcePickup")
@@ -17,7 +17,7 @@ function Spawn.new(Model: BasePart)
 end
 
 function Spawn:_init()
-	-- Use a ClickDetector to request a spawn.
+	-- Create a ClickDetector for spawning.
 	local clickDetector = Instance.new("ClickDetector")
 	clickDetector.MaxActivationDistance = 10
 	clickDetector.Parent = self.model

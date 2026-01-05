@@ -1,4 +1,4 @@
--- Proximity prompt that activates soup when the player drops an ingredient.
+-- Proximity prompt that activates soup from a dragged ingredient.
 local ServerScriptService = game:GetService("ServerScriptService")
 local GetDraggingObject = ServerScriptService:WaitForChild("GetDraggingObject")
 
