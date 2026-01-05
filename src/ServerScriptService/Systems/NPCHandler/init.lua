@@ -1,11 +1,11 @@
 -- NPC spawner with a seat pool and player-scaled timing.
 local Players = game:GetService("Players")
 
-print("[NPCSystem] Init starting")
+local NPCHandler = {}
+local initialized = false
 
-local TablesFolder = workspace:WaitForChild("NPCSystem"):WaitForChild("Tables")
-
-local NPC = require(script.Modules.NPC)
+local TablesFolder
+local NPC
 
 -- =====================
 -- Seat Pool
@@ -196,20 +196,6 @@ local function findAvailableSeat()
 	return nil
 end
 
-for _, tableModel in ipairs(TablesFolder:GetChildren()) do
-	if tableModel:IsA("Model") then
-		registerTable(tableModel)
-	end
-end
-
-print(("[NPCSystem] Tables ready | available seats=%d"):format(#availableSeats))
-
-TablesFolder.ChildAdded:Connect(function(child)
-	if child:IsA("Model") then
-		registerTable(child)
-	end
-end)
-
 -- =====================
 -- Spawn Timing
 -- =====================
@@ -243,30 +229,57 @@ local function getSpawnInterval()
 	return math.max(1, interval + jitter)
 end
 
-task.spawn(function()
-	print("[NPCSystem] Spawn loop started")
-	while true do
-		local result = findAvailableSeat()
-		if not result then
-			local now = os.clock()
-			if now - lastNoSeatLog > 5 then
-				lastNoSeatLog = now
-				print("[NPCSystem] No available seats")
-			end
-			task.wait(SPAWN_IDLE_CHECK)
-			continue
-		end
-
-		local npc = NPC.new({
-			seat = result.seat,
-			hitbox = result.hitbox,
-		})
-
-		-- Release the seat if the NPC failed to spawn.
-		if not npc or npc.state == "DEAD" then
-			result.seat:SetAttribute("Active", false)
-		end
-
-		task.wait(getSpawnInterval())
+function NPCHandler.init()
+	if initialized then
+		return
 	end
-end)
+	initialized = true
+
+	print("[NPCSystem] Init starting")
+	TablesFolder = workspace:WaitForChild("NPCSystem"):WaitForChild("Tables")
+	NPC = require(script.Modules.NPC)
+
+	for _, tableModel in ipairs(TablesFolder:GetChildren()) do
+		if tableModel:IsA("Model") then
+			registerTable(tableModel)
+		end
+	end
+
+	print(("[NPCSystem] Tables ready | available seats=%d"):format(#availableSeats))
+
+	TablesFolder.ChildAdded:Connect(function(child)
+		if child:IsA("Model") then
+			registerTable(child)
+		end
+	end)
+
+	task.spawn(function()
+		print("[NPCSystem] Spawn loop started")
+		while true do
+			local result = findAvailableSeat()
+			if not result then
+				local now = os.clock()
+				if now - lastNoSeatLog > 5 then
+					lastNoSeatLog = now
+					print("[NPCSystem] No available seats")
+				end
+				task.wait(SPAWN_IDLE_CHECK)
+				continue
+			end
+
+			local npc = NPC.new({
+				seat = result.seat,
+				hitbox = result.hitbox,
+			})
+
+			-- Release the seat if the NPC failed to spawn.
+			if not npc or npc.state == "DEAD" then
+				result.seat:SetAttribute("Active", false)
+			end
+
+			task.wait(getSpawnInterval())
+		end
+	end)
+end
+
+return NPCHandler

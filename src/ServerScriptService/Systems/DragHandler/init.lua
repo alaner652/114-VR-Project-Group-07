@@ -2,9 +2,12 @@
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 
-local DragRequest = game.ReplicatedStorage:WaitForChild("DragRequest")
-local GetDraggingObject = game.ServerScriptService:WaitForChild("GetDraggingObject")
-local ReleaseDraggingObject = game.ServerScriptService:WaitForChild("ReleaseDraggingObject")
+local DragHandler = {}
+local initialized = false
+
+local DragRequest
+local GetDraggingObject
+local ReleaseDraggingObject
 
 local PlayerDragging = {}
 
@@ -64,42 +67,55 @@ local function startDrag(player: Player, object: BasePart)
 	return true
 end
 
-DragRequest.OnServerInvoke = function(player: Player, object: BasePart?, requestingPickup: boolean)
-	--print("DragRequest received from", player.Name, "requestingPickup =", requestingPickup, "object =", object)
-	if requestingPickup then
-		if not object then
-			return false
-		end
-		if not object:IsDescendantOf(workspace) then
-			return false
-		end
-		if PlayerDragging[player] then
-			return false
+function DragHandler.init()
+	if initialized then
+		return
+	end
+	initialized = true
+
+	DragRequest = game.ReplicatedStorage:WaitForChild("DragRequest")
+	GetDraggingObject = game.ServerScriptService:WaitForChild("GetDraggingObject")
+	ReleaseDraggingObject = game.ServerScriptService:WaitForChild("ReleaseDraggingObject")
+
+	DragRequest.OnServerInvoke = function(player: Player, object: BasePart?, requestingPickup: boolean)
+		--print("DragRequest received from", player.Name, "requestingPickup =", requestingPickup, "object =", object)
+		if requestingPickup then
+			if not object then
+				return false
+			end
+			if not object:IsDescendantOf(workspace) then
+				return false
+			end
+			if PlayerDragging[player] then
+				return false
+			end
+
+			return startDrag(player, object)
 		end
 
-		return startDrag(player, object)
+		stopDrag(player)
+		return true
 	end
 
-	stopDrag(player)
-	return true
-end
+	GetDraggingObject.OnInvoke = function(player: Player)
+		return PlayerDragging[player]
+	end
 
-GetDraggingObject.OnInvoke = function(player: Player)
-	return PlayerDragging[player]
-end
-
-ReleaseDraggingObject.OnInvoke = function(player: Player)
-	stopDrag(player)
-end
-
-Players.PlayerRemoving:Connect(function(player)
-	stopDrag(player)
-end)
-
-CollectionService:GetInstanceRemovedSignal("Draggable"):Connect(function(instance)
-	local player = getDraggingPlayerByObject(instance)
-	if player then
-		print("Draggable removed from", instance.Name, "stopping drag for player", player and player.Name or "nil")
+	ReleaseDraggingObject.OnInvoke = function(player: Player)
 		stopDrag(player)
 	end
-end)
+
+	Players.PlayerRemoving:Connect(function(player)
+		stopDrag(player)
+	end)
+
+	CollectionService:GetInstanceRemovedSignal("Draggable"):Connect(function(instance)
+		local player = getDraggingPlayerByObject(instance)
+		if player then
+			print("Draggable removed from", instance.Name, "stopping drag for player", player and player.Name or "nil")
+			stopDrag(player)
+		end
+	end)
+end
+
+return DragHandler

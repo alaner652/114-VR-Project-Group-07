@@ -2,6 +2,9 @@
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 
+local CollisionHandler = {}
+local initialized = false
+
 local COLLISION_GROUP = {
 	Player = "Player",
 	NPC = "NPC",
@@ -83,12 +86,6 @@ local function bindPlayer(player: Player)
 	player.CharacterAdded:Connect(setupPlayerCharacter)
 end
 
-for _, player in ipairs(Players:GetPlayers()) do
-	bindPlayer(player)
-end
-
-Players.PlayerAdded:Connect(bindPlayer)
-
 local npcFolderBound = false
 
 local function setupNPC(npcModel: Model)
@@ -123,15 +120,6 @@ local function tryBindNpcFolder()
 	return false
 end
 
-if not tryBindNpcFolder() then
-	warn("[CollisionHandler] workspace.NPCs not found; waiting")
-	workspace.ChildAdded:Connect(function(child)
-		if child.Name == "NPCs" then
-			bindNpcFolder(child)
-		end
-	end)
-end
-
 local function onDraggableAdded(inst: Instance)
 	local model = findRootModel(inst)
 	if model then
@@ -147,9 +135,33 @@ local function onDraggableRemoved(inst: Instance)
 	end
 end
 
-for _, inst in ipairs(CollectionService:GetTagged("Draggable")) do
-	onDraggableAdded(inst)
+function CollisionHandler.init()
+	if initialized then
+		return
+	end
+	initialized = true
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		bindPlayer(player)
+	end
+
+	Players.PlayerAdded:Connect(bindPlayer)
+
+	if not tryBindNpcFolder() then
+		warn("[CollisionHandler] workspace.NPCs not found; waiting")
+		workspace.ChildAdded:Connect(function(child)
+			if child.Name == "NPCs" then
+				bindNpcFolder(child)
+			end
+		end)
+	end
+
+	for _, inst in ipairs(CollectionService:GetTagged("Draggable")) do
+		onDraggableAdded(inst)
+	end
+
+	CollectionService:GetInstanceAddedSignal("Draggable"):Connect(onDraggableAdded)
+	CollectionService:GetInstanceRemovedSignal("Draggable"):Connect(onDraggableRemoved)
 end
 
-CollectionService:GetInstanceAddedSignal("Draggable"):Connect(onDraggableAdded)
-CollectionService:GetInstanceRemovedSignal("Draggable"):Connect(onDraggableRemoved)
+return CollisionHandler

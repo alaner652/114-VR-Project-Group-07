@@ -1,7 +1,8 @@
 -- Tag-based module loader for tagged models.
 local CollectionService = game:GetService("CollectionService")
 
-local modulesRoot = script.Parent.Modules
+local ObjectsHandler = {}
+local initialized = false
 
 local registry = {}
 
@@ -21,9 +22,7 @@ local function collectModules(root)
 	end
 end
 
-collectModules(modulesRoot)
-
-local function init(tag: string, model: Model)
+local function attach(tag: string, model: Model)
 	local entry = registry[tag]
 	if not entry or entry.instances[model] then
 		return
@@ -45,17 +44,29 @@ local function cleanup(tag: string, model: Model)
 	end
 end
 
-for tag in pairs(registry) do
-	for _, model in ipairs(CollectionService:GetTagged(tag)) do
-		init(tag, model)
+function ObjectsHandler.init(modulesRoot: Instance?)
+	if initialized then
+		return
 	end
+	initialized = true
 
-	CollectionService:GetInstanceAddedSignal(tag):Connect(function(model)
-		print("Added", tag, model)
-		init(tag, model)
-	end)
+	local root = modulesRoot or script:WaitForChild("Modules")
+	collectModules(root)
 
-	CollectionService:GetInstanceRemovedSignal(tag):Connect(function(model)
-		cleanup(tag, model)
-	end)
+	for tag in pairs(registry) do
+		for _, model in ipairs(CollectionService:GetTagged(tag)) do
+			attach(tag, model)
+		end
+
+		CollectionService:GetInstanceAddedSignal(tag):Connect(function(model)
+			print("Added", tag, model)
+			attach(tag, model)
+		end)
+
+		CollectionService:GetInstanceRemovedSignal(tag):Connect(function(model)
+			cleanup(tag, model)
+		end)
+	end
 end
+
+return ObjectsHandler
