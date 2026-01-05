@@ -1,4 +1,4 @@
--- Server-side drag ownership and state tracking.
+-- Server drag ownership and state tracking.
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 

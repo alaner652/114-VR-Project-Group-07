@@ -1,3 +1,4 @@
+-- NPC behavior: movement, seating, serving, and cleanup.
 local PathfindingService = game:GetService("PathfindingService")
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")

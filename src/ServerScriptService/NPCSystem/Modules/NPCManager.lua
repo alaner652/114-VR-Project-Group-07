@@ -1,3 +1,4 @@
+-- Central scheduler for NPC timers and serving checks.
 local NPCManager = {}
 
 local COUNTDOWN_INTERVAL = 1
@@ -8,6 +9,7 @@ local countdownRunning = false
 local serveRunning = false
 
 local function pruneIfDead(npc)
+	-- Drop destroyed NPCs from the active set.
 	if not npc then
 		return true
 	end
@@ -38,6 +40,7 @@ function NPCManager.Start()
 		task.spawn(function()
 			while true do
 				task.wait(COUNTDOWN_INTERVAL)
+				-- Tick countdown on all active NPCs.
 				for npc in pairs(active) do
 					if not pruneIfDead(npc) then
 						npc:TickCountdown()
@@ -52,6 +55,7 @@ function NPCManager.Start()
 		task.spawn(function()
 			while true do
 				task.wait(SERVE_INTERVAL)
+				-- Periodically check for serving opportunities.
 				for npc in pairs(active) do
 					if not pruneIfDead(npc) and npc.state == "WAITING_FOOD" then
 						npc:TryServe()

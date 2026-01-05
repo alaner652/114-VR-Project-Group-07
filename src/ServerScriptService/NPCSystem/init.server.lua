@@ -1,4 +1,4 @@
--- NPC spawner with a seat pool and player-scaled spawn timing.
+-- NPC spawner with a seat pool and player-scaled timing.
 local Players = game:GetService("Players")
 
 local NPC = require(script.Modules.NPC)
@@ -6,10 +6,10 @@ local NPC = require(script.Modules.NPC)
 local TablesFolder = workspace:WaitForChild("NPCSystem")
 
 -- =====================
--- Seat Utils
+-- Seat Pool
 -- =====================
 
--- Seat pool for O(1) random selection and release.
+-- Seat pool for fast random selection and release.
 local availableSeats = {}
 local seatIndexBySeat = {}
 local seatMetaBySeat = {}
@@ -191,7 +191,7 @@ TablesFolder.ChildAdded:Connect(function(child)
 end)
 
 -- =====================
--- Spawn Loop
+-- Spawn Timing
 -- =====================
 
 local PLAYER_SCALE_MAX = 4
@@ -236,7 +236,7 @@ task.spawn(function()
 			hitbox = result.hitbox,
 		})
 
-		-- Safety: if NPC failed to spawn, release the seat
+		-- Release the seat if the NPC failed to spawn.
 		if not npc or npc.state == "DEAD" then
 			result.seat:SetAttribute("Active", false)
 		end

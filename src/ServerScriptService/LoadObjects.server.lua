@@ -1,4 +1,4 @@
--- Auto-initialize tagged models by mapping tags to modules.
+-- Tag-based module loader for tagged models.
 local CollectionService = game:GetService("CollectionService")
 
 local modulesRoot = script.Parent.Modules

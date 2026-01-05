@@ -26,6 +26,7 @@ function EventBus.emit(eventName, payload)
 		return
 	end
 
+	-- Clone to allow listeners to unsubscribe during emit.
 	for _, cb in ipairs(table.clone(listeners)) do
 		cb(payload)
 	end

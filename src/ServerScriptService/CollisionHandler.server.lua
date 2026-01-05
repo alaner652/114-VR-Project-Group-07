@@ -1,4 +1,4 @@
--- Keeps collision groups consistent for players, NPCs, and draggable models.
+-- Sync collision groups for players, NPCs, and draggable models.
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 
