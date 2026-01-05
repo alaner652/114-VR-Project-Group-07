@@ -1,10 +1,6 @@
-local Utils = script.Parent.Utils
-local EventBus = require(Utils.EventBus)
+local Players = game:GetService("Players")
 
 local NPC = require(script.Modules.NPC)
-
-local on = EventBus.on
-local emit = EventBus.emit
 
 local TablesFolder = workspace:WaitForChild("NPCSystem")
 
@@ -42,49 +38,43 @@ local function findAvailableSeat()
 end
 
 -- =====================
--- FSM
--- =====================
-
-local State = {
-	IDLE = "Idle",
-	SERVING = "Serving",
-}
-
-local currentState = State.IDLE
-
-local function setState(newState)
-	if currentState == newState then
-		return
-	end
-	print("[NPCSystem]", currentState, "->", newState)
-	currentState = newState
-end
-
--- =====================
--- Event: Batch Start
--- =====================
-
-on("BatchTimeReached", function()
-	if currentState ~= State.IDLE then
-		return
-	end
-	setState(State.SERVING)
-end)
-
--- =====================
 -- Spawn Loop
 -- =====================
 
-task.spawn(function()
-	while task.wait(1) do
-		if currentState ~= State.SERVING then
-			continue
-		end
+local PLAYER_SCALE_MAX = 4
+local INTERVAL_MIN_AT_ONE = 10
+local INTERVAL_MAX_AT_ONE = 13
+local INTERVAL_MIN_AT_MAX = 3
+local INTERVAL_MAX_AT_MAX = 6
+local SPAWN_IDLE_CHECK = 0.5
+local SPAWN_JITTER = 1
 
+local function lerp(a, b, t)
+	return a + (b - a) * t
+end
+
+local function randRange(min, max)
+	return min + (max - min) * math.random()
+end
+
+local function getSpawnInterval()
+	local playerCount = #Players:GetPlayers()
+	local t = math.clamp(playerCount / PLAYER_SCALE_MAX, 0, 1)
+
+	local minInterval = lerp(INTERVAL_MIN_AT_ONE, INTERVAL_MIN_AT_MAX, t)
+	local maxInterval = lerp(INTERVAL_MAX_AT_ONE, INTERVAL_MAX_AT_MAX, t)
+
+	local interval = randRange(minInterval, maxInterval)
+	local jitter = randRange(-SPAWN_JITTER, SPAWN_JITTER)
+
+	return math.max(1, interval + jitter)
+end
+
+task.spawn(function()
+	while true do
 		local result = findAvailableSeat()
 		if not result then
-			-- 沒座位，自然結束這一批
-			setState(State.IDLE)
+			task.wait(SPAWN_IDLE_CHECK)
 			continue
 		end
 
@@ -93,36 +83,11 @@ task.spawn(function()
 			hitbox = result.hitbox,
 		})
 
-		-- 防呆：如果 NPC 沒成功生成，釋放座位
+		-- Safety: if NPC failed to spawn, release the seat
 		if not npc or npc.state == "DEAD" then
 			result.seat:SetAttribute("Active", false)
 		end
 
-		task.wait(math.random(1, 3))
-	end
-end)
-
--- =====================
--- Batch Timer
--- =====================
-
-local MIN_INTERVAL = 1
-local MAX_INTERVAL = 1
-
-local lastBatchTime = os.clock()
-local nextInterval = math.random(MIN_INTERVAL, MAX_INTERVAL)
-
-task.spawn(function()
-	while task.wait(1) do
-		if currentState ~= State.IDLE then
-			continue
-		end
-
-		local now = os.clock()
-		if now - lastBatchTime >= nextInterval then
-			lastBatchTime = now
-			nextInterval = math.random(MIN_INTERVAL, MAX_INTERVAL)
-			emit("BatchTimeReached")
-		end
+		task.wait(getSpawnInterval())
 	end
 end)
