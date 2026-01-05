@@ -3,7 +3,7 @@ local CollectionService = game:GetService("CollectionService")
 
 local ReleaseDraggingObject = ServerScriptService:WaitForChild("ReleaseDraggingObject")
 
-local DEBUG_UNLOCK_ALL = true
+local DEBUG_UNLOCK_ALL = false
 
 local Ramen = {}
 Ramen.__index = Ramen
