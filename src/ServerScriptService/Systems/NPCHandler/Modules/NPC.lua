@@ -153,6 +153,7 @@ function NPC.new(context)
 
 	-- Spawn at the entry point.
 	self.model:SetPrimaryPartCFrame(self.spawnCFrame)
+	model.Name = ("NPC %d"):format(self.id)
 
 	local params = OverlapParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
@@ -233,7 +234,7 @@ function NPC:Tick()
 	end
 
 	-- Keep a readable state name for debugging.
-	self.model.Name = ("%s (%ds)"):format(self.state, math.max(0, self.timer))
+	self.humanoid.DisplayName = ("%s (%ds)"):format(self.state, math.max(0, self.timer))
 
 	-- Try to claim food while waiting.
 	if self.state == State.WAITING then

@@ -1,6 +1,8 @@
 -- Proximity prompt that activates soup from a dragged ingredient.
 local ServerScriptService = game:GetService("ServerScriptService")
-local GetDraggingObject = ServerScriptService:WaitForChild("GetDraggingObject")
+
+local Bindables = ServerScriptService:WaitForChild("Bindables")
+local GetDraggingObject = Bindables:WaitForChild("GetDraggingObject")
 
 local SoupPot = {}
 SoupPot.__index = SoupPot

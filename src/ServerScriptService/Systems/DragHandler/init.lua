@@ -1,13 +1,17 @@
 -- Server drag ownership and state tracking.
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+local Bindables = ServerScriptService:WaitForChild("Bindables")
+
+local DragRequest = ReplicatedStorage:WaitForChild("DragRequest")
+local GetDraggingObject = Bindables:WaitForChild("GetDraggingObject")
+local ReleaseDraggingObject = Bindables:WaitForChild("ReleaseDraggingObject")
 
 local DragHandler = {}
 local initialized = false
-
-local DragRequest
-local GetDraggingObject
-local ReleaseDraggingObject
 
 local PlayerDragging = {}
 
@@ -72,10 +76,6 @@ function DragHandler.init()
 		return
 	end
 	initialized = true
-
-	DragRequest = game.ReplicatedStorage:WaitForChild("DragRequest")
-	GetDraggingObject = game.ServerScriptService:WaitForChild("GetDraggingObject")
-	ReleaseDraggingObject = game.ServerScriptService:WaitForChild("ReleaseDraggingObject")
 
 	DragRequest.OnServerInvoke = function(player: Player, object: BasePart?, requestingPickup: boolean)
 		--print("DragRequest received from", player.Name, "requestingPickup =", requestingPickup, "object =", object)

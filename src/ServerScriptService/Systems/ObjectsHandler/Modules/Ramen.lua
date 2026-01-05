@@ -1,8 +1,9 @@
 -- Ramen bowl logic: unlock ingredients and mark completion.
-local ServerScriptService = game:GetService("ServerScriptService")
 local CollectionService = game:GetService("CollectionService")
+local ServerScriptService = game:GetService("ServerScriptService")
 
-local ReleaseDraggingObject = ServerScriptService:WaitForChild("ReleaseDraggingObject")
+local Bindables = ServerScriptService:WaitForChild("Bindables")
+local ReleaseDraggingObject = Bindables:WaitForChild("ReleaseDraggingObject")
 
 local DEBUG_UNLOCK_ALL = false
 

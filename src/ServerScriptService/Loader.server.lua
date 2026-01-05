@@ -14,5 +14,6 @@ local ObjectsHandler = require(SystemFolder:WaitForChild("ObjectsHandler"))
 -- =====================
 CollisionHandler.init()
 DragHandler.init()
-NPCHandler.init()
 ObjectsHandler.init()
+task.wait(1)
+NPCHandler.init()
