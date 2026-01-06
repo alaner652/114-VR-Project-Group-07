@@ -17,8 +17,10 @@ local seatIndexBySeat = {}
 local seatMetaBySeat = {}
 local seatConnections = {}
 local tableConnections = {}
-local DEBUG_POOL_LOG = true
-local DEBUG_TABLE_LOG = true
+
+local DEBUG_POOL_LOG = false
+local DEBUG_TABLE_LOG = false
+
 local lastPoolLog = 0
 local lastNoSeatLog = 0
 local warnedTables = {}

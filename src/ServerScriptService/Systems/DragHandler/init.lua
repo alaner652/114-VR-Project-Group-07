@@ -112,7 +112,7 @@ function DragHandler.init()
 	CollectionService:GetInstanceRemovedSignal("Draggable"):Connect(function(instance)
 		local player = getDraggingPlayerByObject(instance)
 		if player then
-			print("Draggable removed from", instance.Name, "stopping drag for player", player and player.Name or "nil")
+			--print("Draggable removed from", instance.Name, "stopping drag for player", player and player.Name or "nil")
 			stopDrag(player)
 		end
 	end)

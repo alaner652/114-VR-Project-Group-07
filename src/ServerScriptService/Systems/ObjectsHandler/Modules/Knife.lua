@@ -29,7 +29,7 @@ function Knife:_initTouched()
 			return
 		end
 
-		print("Knife cut:", ingredient.Name)
+		--print("Knife cut:", ingredient.Name)
 
 		if ingredient.Name == "UnCutPork" then
 			local oldCF = ingredient.PrimaryPart.CFrame

@@ -31,7 +31,7 @@ function Spawn:_init()
 
 		local ingredient = ReplicatedStorage.Ingredients:FindFirstChild(spawnObjectName)
 		if not ingredient then
-			warn("Ingredient not found in ReplicatedStorage.Ingredients:", spawnObjectName)
+			warn("Ingredient not found in ServerStorage.Ingredients:", spawnObjectName)
 			return
 		end
 
@@ -50,7 +50,7 @@ function Spawn:_init()
 		local newObject = ingredient:Clone()
 		newObject.Parent = workspace.SpawnedObjects
 
-		task.wait(0.2) -- Wait a frame to ensure the object is properly parented.
+		task.wait(0.2)
 
 		local targetPos = hrp.Position + hrp.CFrame.LookVector * 3 + Vector3.new(0, 1, 0)
 		local targetCF = CFrame.new(targetPos)
