@@ -1,4 +1,7 @@
 -- Cut ingredients when the knife is dragged across them.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Ingredients = ReplicatedStorage:WaitForChild("Ingredients")
+
 local Knife = {}
 Knife.__index = Knife
 
@@ -31,7 +34,7 @@ function Knife:_initTouched()
 		if ingredient.Name == "UnCutPork" then
 			local oldCF = ingredient.PrimaryPart.CFrame
 
-			local newPork = game.ServerStorage.Ingredients:FindFirstChild("Porks"):Clone()
+			local newPork = Ingredients:FindFirstChild("Porks"):Clone()
 			newPork:SetPrimaryPartCFrame(oldCF * CFrame.new(0, 1, 0))
 			newPork.Parent = ingredient.Parent
 
@@ -39,7 +42,7 @@ function Knife:_initTouched()
 		elseif ingredient.Name == "Dough" then
 			local oldCF = ingredient.PrimaryPart.CFrame
 
-			local newNoodles = game.ServerStorage.Ingredients:FindFirstChild("Noodles"):Clone()
+			local newNoodles = Ingredients:FindFirstChild("Noodles"):Clone()
 			newNoodles:SetPrimaryPartCFrame(oldCF * CFrame.new(0, 1, 0))
 			newNoodles.Parent = ingredient.Parent
 
@@ -48,7 +51,7 @@ function Knife:_initTouched()
 			local oldCF = ingredient.PrimaryPart.CFrame
 
 			for i = 1, 3 do
-				local newOnion = game.ServerStorage.Ingredients:FindFirstChild("ChoppedGreenOnion"):Clone()
+				local newOnion = Ingredients:FindFirstChild("ChoppedGreenOnion"):Clone()
 				newOnion:SetPrimaryPartCFrame(oldCF * CFrame.new(0, 0.5 * i, 0))
 				newOnion.Parent = ingredient.Parent
 			end
@@ -58,7 +61,7 @@ function Knife:_initTouched()
 			local oldCF = ingredient.PrimaryPart.CFrame
 
 			for i = 1, 2 do
-				local newOnion = game.ServerStorage.Ingredients:FindFirstChild("CutEgg"):Clone()
+				local newOnion = Ingredients:FindFirstChild("CutEgg"):Clone()
 				newOnion:SetPrimaryPartCFrame(oldCF * CFrame.new(0, 0.5 * i, 0))
 				newOnion.Parent = ingredient.Parent
 			end
