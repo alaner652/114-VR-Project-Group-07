@@ -1,3 +1,4 @@
+-- Disable unwanted humanoid states for this experience.
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()

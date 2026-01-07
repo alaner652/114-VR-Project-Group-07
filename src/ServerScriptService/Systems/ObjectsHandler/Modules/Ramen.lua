@@ -1,7 +1,11 @@
-local ServerScriptService = game:GetService("ServerScriptService")
+-- Ramen bowl logic: unlock ingredients and mark completion.
 local CollectionService = game:GetService("CollectionService")
+local ServerScriptService = game:GetService("ServerScriptService")
 
-local ReleaseDraggingObject = ServerScriptService:WaitForChild("ReleaseDraggingObject")
+local Bindables = ServerScriptService:WaitForChild("Bindables")
+local ReleaseDraggingObject = Bindables:WaitForChild("ReleaseDraggingObject")
+
+local DEBUG_UNLOCK_ALL = false
 
 local Ramen = {}
 Ramen.__index = Ramen
@@ -12,6 +16,24 @@ local function forEachPart(model: Model, fn: (BasePart) -> ())
 			fn(inst)
 		end
 	end
+end
+
+local function getBowlPart(model: Model): BasePart?
+	if model.PrimaryPart then
+		return model.PrimaryPart
+	end
+	return model:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function unlockAllIngredients(self)
+	-- Debug helper: unlock all ingredients at once.
+	for key, _ in pairs(self.recipe) do
+		if not self.unlocked[key] then
+			self:_unlock(key)
+		end
+	end
+
+	self.model:SetAttribute("Completed", true)
 end
 
 function Ramen.new(model: Model)
@@ -26,25 +48,35 @@ function Ramen.new(model: Model)
 	local self = setmetatable({
 		model = model,
 		ingredientsFolder = ingredientsFolder,
+
 		recipe = {},
 		unlocked = {},
 		hiddenProps = {},
+
 		total = 0,
 		required = typeof(required) == "number" and required or 0,
 		unlockedCount = 0,
+
 		touchConn = nil,
 	}, Ramen)
 
 	self:_cacheRecipe()
+
 	if self.required <= 0 or self.required > self.total then
 		self.required = self.total
 	end
 
-	self:_bindTouch()
+	if DEBUG_UNLOCK_ALL then
+		unlockAllIngredients(self)
+	else
+		self:_bindTouch()
+	end
+
 	return self
 end
 
 function Ramen:_cacheRecipe()
+	-- Build the recipe list and hide ingredient parts.
 	for _, ingredient in ipairs(self.ingredientsFolder:GetChildren()) do
 		if ingredient:IsA("Model") then
 			local key = ingredient:GetAttribute("IngredientType") or ingredient.Name
@@ -61,6 +93,7 @@ function Ramen:_cacheRecipe()
 					Transparency = originalTransparency,
 					CanCollide = part.CanCollide,
 				}
+
 				part.Transparency = 1
 				part.CanCollide = false
 			end)
@@ -68,14 +101,8 @@ function Ramen:_cacheRecipe()
 	end
 end
 
-local function getBowlPart(model: Model): BasePart?
-	if model.PrimaryPart then
-		return model.PrimaryPart
-	end
-	return model:FindFirstChildWhichIsA("BasePart", true)
-end
-
 function Ramen:_bindTouch()
+	-- Unlock ingredients when a dragged item touches the bowl.
 	local bowlPart = getBowlPart(self.model)
 	if not bowlPart then
 		warn(("Ramen %s has no primary BasePart"):format(self.model.Name))
@@ -96,9 +123,11 @@ function Ramen:_bindTouch()
 
 		local isDraggable = CollectionService:HasTag(ingredientModel, "Draggable")
 			or CollectionService:HasTag(hit, "Draggable")
+
 		if not isDraggable then
 			return
 		end
+
 		if ingredientModel:GetAttribute("BeingDragged") ~= true then
 			return
 		end
@@ -121,9 +150,11 @@ function Ramen:_bindTouch()
 			ingredientModel:SetAttribute("Active", false)
 		else
 			local owner = ingredientModel.PrimaryPart and ingredientModel.PrimaryPart:GetNetworkOwner()
+
 			if owner then
 				ReleaseDraggingObject:Invoke(owner)
 			end
+
 			ingredientModel:Destroy()
 		end
 

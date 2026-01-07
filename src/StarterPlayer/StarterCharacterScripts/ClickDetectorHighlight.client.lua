@@ -1,4 +1,4 @@
--- Services
+-- Highlight models under the cursor that have a ClickDetector.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -57,6 +57,7 @@ local function setHighlight(model: Model?)
 end
 
 RunService.RenderStepped:Connect(function()
+	-- Raycast from the mouse and update the highlight target.
 	local mousePos = UserInputService:GetMouseLocation()
 	local ray = camera:ViewportPointToRay(mousePos.X, mousePos.Y)
 

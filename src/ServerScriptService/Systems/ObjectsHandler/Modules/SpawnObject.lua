@@ -1,3 +1,4 @@
+-- Spawn ingredients on click and hand them to the player.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ForcePickupRemote = ReplicatedStorage:WaitForChild("ForcePickup")
@@ -16,6 +17,7 @@ function Spawn.new(Model: BasePart)
 end
 
 function Spawn:_init()
+	-- Create a ClickDetector for spawning.
 	local clickDetector = Instance.new("ClickDetector")
 	clickDetector.MaxActivationDistance = 10
 	clickDetector.Parent = self.model
@@ -23,28 +25,32 @@ function Spawn:_init()
 	self.connection = clickDetector.MouseClick:Connect(function(player)
 		local spawnObjectName = self.model:GetAttribute("SpawnObject")
 		if not spawnObjectName then
+			warn("SpawnObject attribute not set on model:", self.model.Name)
 			return
 		end
 
-		local ingredient = game.ServerStorage.Ingredients:FindFirstChild(spawnObjectName)
+		local ingredient = ReplicatedStorage.Ingredients:FindFirstChild(spawnObjectName)
 		if not ingredient then
+			warn("Ingredient not found in ServerStorage.Ingredients:", spawnObjectName)
 			return
 		end
 
 		local character = player.Character
 		if not character then
+			warn("Player character not found for player:", player.Name)
 			return
 		end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart")
 		if not hrp then
+			warn("HumanoidRootPart not found in character for player:", player.Name)
 			return
 		end
 
 		local newObject = ingredient:Clone()
 		newObject.Parent = workspace.SpawnedObjects
 
-		task.wait(0.1)
+		task.wait(0.2)
 
 		local targetPos = hrp.Position + hrp.CFrame.LookVector * 3 + Vector3.new(0, 1, 0)
 		local targetCF = CFrame.new(targetPos)
@@ -56,6 +62,7 @@ function Spawn:_init()
 		end
 
 		ForcePickupRemote:FireClient(player, newObject.PrimaryPart)
+		print("Spawned object", spawnObjectName, "for player", player.Name)
 	end)
 end
 

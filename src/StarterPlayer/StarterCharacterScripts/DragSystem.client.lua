@@ -1,12 +1,15 @@
+-- Client drag controller: raycast, request server ownership, and drive attachments.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VRService = game:GetService("VRService")
 
-local MAX_DISTANCE = 10
-local MIN_DISTANCE = 4
-local LIMIT_DISTANCE = true
+local RAYCAST_DISTANCE = 8
+local DEFAULT_DRAG_DISTANCE = 4
+local MIN_DRAG_DISTANCE = 2
+local MAX_DRAG_DISTANCE = RAYCAST_DISTANCE
+local SCROLL_STEP = 0.5
 
 local DragState = {
 	Idle = 0,
@@ -25,10 +28,14 @@ local state = DragState.Idle
 local target: Part?
 local grabbedObject: Part?
 local dragAttachment: Attachment?
-local distance = MIN_DISTANCE
+local distance = DEFAULT_DRAG_DISTANCE
 
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local function setDistance(value: number)
+	distance = math.clamp(value, MIN_DRAG_DISTANCE, MAX_DRAG_DISTANCE)
+end
 
 local function updateRaycastFilter()
 	if player.Character then
@@ -40,10 +47,7 @@ player.CharacterAdded:Connect(updateRaycastFilter)
 updateRaycastFilter()
 
 local function getRootModel(instance: Instance): Model?
-	if not instance then
-		return nil
-	end
-	return instance:FindFirstAncestorOfClass("Model")
+	return instance and instance:FindFirstAncestorOfClass("Model") or nil
 end
 
 local function isBeingDragged(instance: Instance): boolean
@@ -58,13 +62,7 @@ end
 local lastHighlighted: Instance?
 
 local function setHighlight(object: Instance?)
-	if not object then
-		script.Highlight.Adornee = nil
-		lastHighlighted = nil
-		return
-	end
-
-	local model = getRootModel(object)
+	local model = object and getRootModel(object) or nil
 	if lastHighlighted == model then
 		return
 	end
@@ -102,12 +100,34 @@ local function dropObject()
 	script.AlignPosition.Attachment0 = nil
 end
 
-UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then
-		return
+local function tryStartDrag(candidate: Part?): boolean
+	if not candidate or not candidate.Parent then
+		return false
 	end
 
-	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+	if not dragRemote:InvokeServer(candidate, true) then
+		return false
+	end
+
+	if not candidate.Parent then
+		return false
+	end
+
+	grabbedObject = candidate
+	dragAttachment = getOrCreateDragAttachment(candidate)
+	if not dragAttachment then
+		dropObject()
+		return false
+	end
+
+	script.AlignOrientation.Attachment0 = dragAttachment
+	script.AlignPosition.Attachment0 = dragAttachment
+	state = DragState.Dragging
+	return true
+end
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed or input.UserInputType ~= Enum.UserInputType.MouseButton1 then
 		return
 	end
 
@@ -116,54 +136,32 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		return
 	end
 
-	if state ~= DragState.Hovering or not target then
+	if state == DragState.Hovering and target then
+		tryStartDrag(target)
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input, processed)
+	if processed or input.UserInputType ~= Enum.UserInputType.MouseWheel then
 		return
 	end
 
-	local candidate = target
-	if dragRemote:InvokeServer(candidate, true) then
-		if not candidate or not candidate.Parent then
-			return
+	if state == DragState.Dragging and grabbedObject then
+		local delta = input.Position.Z
+		if delta ~= 0 then
+			setDistance(distance + delta * SCROLL_STEP)
 		end
-
-		grabbedObject = candidate
-		dragAttachment = getOrCreateDragAttachment(grabbedObject)
-		if not dragAttachment then
-			dropObject()
-			return
-		end
-
-		script.AlignOrientation.Attachment0 = dragAttachment
-		script.AlignPosition.Attachment0 = dragAttachment
-
-		state = DragState.Dragging
 	end
 end)
 
 ForcePickupRemote.OnClientEvent:Connect(function(object: Part)
+	-- Server can force a pickup after spawning an item.
 	if state == DragState.Dragging then
 		dropObject()
 		return
 	end
-	local candidate = object
-	if dragRemote:InvokeServer(candidate, true) then
-		print("Server approved force pickup")
-		if not candidate or not candidate.Parent then
-			return
-		end
-
-		grabbedObject = candidate
-		dragAttachment = getOrCreateDragAttachment(grabbedObject)
-		if not dragAttachment then
-			dropObject()
-			return
-		end
-
-		script.AlignOrientation.Attachment0 = dragAttachment
-		script.AlignPosition.Attachment0 = dragAttachment
-
-		state = DragState.Dragging
-		setHighlight(candidate)
+	if tryStartDrag(object) then
+		setHighlight(object)
 	end
 end)
 
@@ -174,37 +172,34 @@ local function getBaseCFrame(): CFrame
 	return camera.CFrame
 end
 
+local function updateDragTargetAttachment(baseCF: CFrame)
+	dragTargetAttachment.WorldCFrame = baseCF * CFrame.new(0, 0, -distance)
+end
+
 RunService.RenderStepped:Connect(function()
+	-- Per-frame update: drag target and highlight.
+	local baseCF = getBaseCFrame()
 	if state == DragState.Dragging and grabbedObject then
-		local baseCF = getBaseCFrame()
-		dragTargetAttachment.WorldCFrame = baseCF * CFrame.new(0, 0, -distance)
+		updateDragTargetAttachment(baseCF)
 		return
 	end
 
 	local mousePos = UserInputService:GetMouseLocation()
 	local ray = camera:ViewportPointToRay(mousePos.X, mousePos.Y)
 
-	local result = workspace:Raycast(ray.Origin, ray.Direction * MAX_DISTANCE, rayParams)
+	local result = workspace:Raycast(ray.Origin, ray.Direction * RAYCAST_DISTANCE, rayParams)
+	local hit = result and result.Instance
 
-	if result and result.Instance and result.Instance:HasTag("Draggable") then
-		print("Raycast result:", result.Instance)
-		if isBeingDragged(result.Instance) then
-			target = nil
-			state = DragState.Idle
-		else
-			target = result.Instance
-			state = DragState.Hovering
-
-			if not LIMIT_DISTANCE then
-				distance = (ray.Origin - result.Position).Magnitude
-			else
-				distance = MIN_DISTANCE
-			end
-		end
+	if hit and hit:HasTag("Draggable") and not isBeingDragged(hit) then
+		target = hit
+		state = DragState.Hovering
+		setDistance((ray.Origin - result.Position).Magnitude)
 	else
 		target = nil
 		state = DragState.Idle
+		setDistance(DEFAULT_DRAG_DISTANCE)
 	end
 
+	updateDragTargetAttachment(baseCF)
 	setHighlight(target)
 end)

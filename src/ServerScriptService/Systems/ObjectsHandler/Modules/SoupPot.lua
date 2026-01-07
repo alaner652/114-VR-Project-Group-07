@@ -1,5 +1,8 @@
+-- Proximity prompt that activates soup from a dragged ingredient.
 local ServerScriptService = game:GetService("ServerScriptService")
-local GetDraggingObject = ServerScriptService:WaitForChild("GetDraggingObject")
+
+local Bindables = ServerScriptService:WaitForChild("Bindables")
+local GetDraggingObject = Bindables:WaitForChild("GetDraggingObject")
 
 local SoupPot = {}
 SoupPot.__index = SoupPot
@@ -7,7 +10,7 @@ SoupPot.__index = SoupPot
 function SoupPot.new(model: Model)
 	local self = setmetatable({
 		model = model,
-		prompt = Instance.new("ProximityPrompt"),
+		prompt = nil,
 		connection = nil,
 	}, SoupPot)
 
@@ -16,24 +19,15 @@ function SoupPot.new(model: Model)
 end
 
 function SoupPot:_init()
-	local prompt = self.prompt
+	-- Build the prompt and disable it while the pot is dragged.
+	local prompt = Instance.new("ProximityPrompt")
 	prompt.ObjectText = self.model.Name
-	prompt.ActionText = "Interact"
-	prompt.MaxActivationDistance = 10
+	prompt.MaxActivationDistance = 5
 	prompt.RequiresLineOfSight = false
-	prompt.Parent = self.model.PrimaryPart
+	prompt.ClickablePrompt = false
+	prompt.HoldDuration = 0
 
-	local function updatePromptEnabled()
-		if not self.prompt then
-			return
-		end
-
-		local isBeingDragged = self.model:GetAttribute("BeingDragged")
-		self.prompt.Enabled = isBeingDragged ~= true
-	end
-
-	updatePromptEnabled()
-	self.dragConnection = self.model:GetAttributeChangedSignal("BeingDragged"):Connect(updatePromptEnabled)
+	prompt.Parent = self.model
 
 	self.connection = prompt.Triggered:Connect(function(player)
 		local dragged = GetDraggingObject:Invoke(player)
