@@ -61,7 +61,7 @@ local NEXT_ID = 0
 -- =====================
 
 local function log(id, msg)
-	print(("[NPC %d] %s"):format(id, msg))
+	--print(("[NPC %d] %s"):format(id, msg))
 end
 
 local function logWarn(id, msg)
