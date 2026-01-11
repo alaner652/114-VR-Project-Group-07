@@ -39,14 +39,6 @@ function Knife:_initTouched()
 			newPork.Parent = ingredient.Parent
 
 			ingredient:Destroy()
-		elseif ingredient.Name == "Dough" then
-			local oldCF = ingredient.PrimaryPart.CFrame
-
-			local newNoodles = Ingredients:FindFirstChild("Noodles"):Clone()
-			newNoodles:SetPrimaryPartCFrame(oldCF * CFrame.new(0, 1, 0))
-			newNoodles.Parent = ingredient.Parent
-
-			ingredient:Destroy()
 		elseif ingredient.Name == "GreenOnion" then
 			local oldCF = ingredient.PrimaryPart.CFrame
 

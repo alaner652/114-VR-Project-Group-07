@@ -9,9 +9,6 @@ Pot.__index = Pot
 local FOOD_TAG = "Ingredients"
 local STOVE_SLOT_TAG = "StoveSlot"
 
--- ===== Debug =====
-local DEBUG = true
-
 -- ===== Overlap =====
 local overlapParams = OverlapParams.new()
 overlapParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -35,14 +32,9 @@ function Pot.new(model)
 	local self = setmetatable({}, Pot)
 
 	self.model = model
-	self.containerType = model:GetAttribute("ContainerType") or "Pan"
 
-	self.foodModels = {} -- 存 FoodRoot (Model)
+	self.foodModels = {}
 	self.hasHeat = false
-
-	if DEBUG then
-		print("[Pot] New:", model:GetFullName(), "Type =", self.containerType)
-	end
 
 	self._conn = RunService.Heartbeat:Connect(function()
 		self:_update()
@@ -51,7 +43,6 @@ function Pot.new(model)
 	return self
 end
 
--- ===== Update =====
 function Pot:_update()
 	self:_syncFoods()
 	self:_updateHeat()
@@ -59,11 +50,9 @@ function Pot:_update()
 	for _, food in ipairs(self.foodModels) do
 		food:SetAttribute("HasHeat", self.hasHeat)
 		food:SetAttribute("InPot", true)
-		food:SetAttribute("ContainerType", self.containerType)
 	end
 end
 
--- ===== Heat Detection (Slot-based) =====
 function Pot:_updateHeat()
 	local potPos = self.model:GetPivot().Position
 	local hasHeat = false
@@ -80,13 +69,9 @@ function Pot:_updateHeat()
 
 	if hasHeat ~= self.hasHeat then
 		self.hasHeat = hasHeat
-		if DEBUG then
-			print("[Pot]", hasHeat and "Heat ON" or "Heat OFF")
-		end
 	end
 end
 
--- ===== Sync Foods (Model-based) =====
 function Pot:_syncFoods()
 	local cf, size = getBounds(self.model)
 	if not cf then
@@ -116,10 +101,6 @@ end
 function Pot:_addFood(foodModel)
 	self.foodModels[#self.foodModels + 1] = foodModel
 	foodModel:SetAttribute("InPot", true)
-
-	if DEBUG then
-		print("[Pot] Food added:", foodModel:GetFullName())
-	end
 end
 
 function Pot:_removeFood(foodModel)
@@ -128,20 +109,18 @@ function Pot:_removeFood(foodModel)
 		table.remove(self.foodModels, i)
 		foodModel:SetAttribute("InPot", false)
 		foodModel:SetAttribute("HasHeat", false)
-
-		if DEBUG then
-			print("[Pot] Food removed:", foodModel:GetFullName())
-		end
 	end
 end
 
--- ===== Destroy =====
 function Pot:Destroy()
-	if DEBUG then
-		print("[Pot] Destroy:", self.model:GetFullName())
-	end
 	if self._conn then
 		self._conn:Disconnect()
+	end
+	for _, food in ipairs(self.foodModels) do
+		if food and food.Parent then
+			food:SetAttribute("InPot", false)
+			food:SetAttribute("HasHeat", false)
+		end
 	end
 end
 

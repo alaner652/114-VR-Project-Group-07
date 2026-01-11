@@ -20,10 +20,13 @@ end
 function GasStove:_init()
 	self.object:SetAttribute("isOn", false)
 
-	local clickDetector = Instance.new("ClickDetector")
-	clickDetector.Parent = self.object
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Toggle Stove"
+	prompt.ObjectText = "Gas Stove"
+	prompt.Parent = self.object.PrimaryPart
 
-	self.Triggered = clickDetector.MouseClick:Connect(function()
+	self.Prompt = prompt
+	self.Triggered = prompt.Triggered:Connect(function()
 		self:action()
 	end)
 end
