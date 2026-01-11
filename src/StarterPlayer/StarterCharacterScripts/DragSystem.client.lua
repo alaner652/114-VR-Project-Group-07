@@ -1,81 +1,65 @@
--- Client drag controller: raycast, request server ownership, and drive attachments.
+-- Client Drag Controller (Overlap + Ray-direction selection)
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VRService = game:GetService("VRService")
+local CollectionService = game:GetService("CollectionService")
 
-local RAYCAST_DISTANCE = 8
-local DEFAULT_DRAG_DISTANCE = 4
-local MIN_DRAG_DISTANCE = 2
-local MAX_DRAG_DISTANCE = RAYCAST_DISTANCE
+-- ===== Constants =====
+local DEFAULT_DISTANCE = 4
+local MIN_DISTANCE = 2
+local MAX_DISTANCE = 8
 local SCROLL_STEP = 0.5
+local OVERLAP_RADIUS = 2
 
+-- ===== Drag State =====
 local DragState = {
 	Idle = 0,
 	Hovering = 1,
 	Dragging = 2,
 }
 
+-- ===== Services / Remotes =====
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
-local dragRemote = ReplicatedStorage:WaitForChild("DragRequest")
+local DragRequest = ReplicatedStorage:WaitForChild("DragRequest")
 local ForcePickupRemote = ReplicatedStorage:WaitForChild("ForcePickup")
 
-local dragTargetAttachment: Attachment = workspace.Terrain:WaitForChild("DragTarget")
+local dragTarget: Attachment = workspace.Terrain:WaitForChild("DragTarget")
 
+-- ===== State =====
 local state = DragState.Idle
-local target: Part?
-local grabbedObject: Part?
-local dragAttachment: Attachment?
-local distance = DEFAULT_DRAG_DISTANCE
+local target: BasePart?
+local grabbed: BasePart?
+local distance = DEFAULT_DISTANCE
 
-local rayParams = RaycastParams.new()
-rayParams.FilterType = Enum.RaycastFilterType.Exclude
-
-local function setDistance(value: number)
-	distance = math.clamp(value, MIN_DRAG_DISTANCE, MAX_DRAG_DISTANCE)
+-- ===== Utils =====
+local function clampDistance(v)
+	distance = math.clamp(v, MIN_DISTANCE, MAX_DISTANCE)
 end
 
-local function updateRaycastFilter()
-	if player.Character then
-		rayParams.FilterDescendantsInstances = player.Character:GetDescendants()
-	end
+local function rootModel(inst)
+	return inst and inst:FindFirstAncestorOfClass("Model")
 end
 
-player.CharacterAdded:Connect(updateRaycastFilter)
-updateRaycastFilter()
-
-local function getRootModel(instance: Instance): Model?
-	return instance and instance:FindFirstAncestorOfClass("Model") or nil
+local function isBeingDragged(inst)
+	local model = rootModel(inst)
+	return model and model:GetAttribute("BeingDragged") == true
 end
 
-local function isBeingDragged(instance: Instance): boolean
-	local model = getRootModel(instance)
-	if not model then
-		return false
-	end
-
-	return model:GetAttribute("BeingDragged") == true
-end
-
-local lastHighlighted: Instance?
-
-local function setHighlight(object: Instance?)
-	local model = object and getRootModel(object) or nil
-	if lastHighlighted == model then
+local lastHighlight: Model?
+local function setHighlight(inst)
+	local model = inst and rootModel(inst)
+	if model == lastHighlight then
 		return
 	end
-
 	script.Highlight.Adornee = model
-	lastHighlighted = model
+	lastHighlight = model
 end
 
-local function getOrCreateDragAttachment(part: Part?): Attachment?
-	if not part or not part.Parent then
-		return nil
-	end
-
+local function getOrCreateAttachment(part)
 	local att = part:FindFirstChild("DragAttachment")
 	if not att then
 		att = Instance.new("Attachment")
@@ -85,121 +69,121 @@ local function getOrCreateDragAttachment(part: Part?): Attachment?
 	return att
 end
 
-local function dropObject()
-	if not grabbedObject then
+-- ===== Drag Control =====
+local function drop()
+	if not grabbed then
 		return
 	end
-
-	dragRemote:InvokeServer(grabbedObject, false)
-
-	grabbedObject = nil
-	dragAttachment = nil
+	DragRequest:InvokeServer(grabbed, false)
+	grabbed = nil
 	state = DragState.Idle
-
-	script.AlignOrientation.Attachment0 = nil
 	script.AlignPosition.Attachment0 = nil
+	script.AlignOrientation.Attachment0 = nil
 end
 
-local function tryStartDrag(candidate: Part?): boolean
-	if not candidate or not candidate.Parent then
+local function tryDrag(part)
+	if not part or not part.Parent then
+		return false
+	end
+	if not DragRequest:InvokeServer(part, true) then
 		return false
 	end
 
-	if not dragRemote:InvokeServer(candidate, true) then
-		return false
-	end
-
-	if not candidate.Parent then
-		return false
-	end
-
-	grabbedObject = candidate
-	dragAttachment = getOrCreateDragAttachment(candidate)
-	if not dragAttachment then
-		dropObject()
-		return false
-	end
-
-	script.AlignOrientation.Attachment0 = dragAttachment
-	script.AlignPosition.Attachment0 = dragAttachment
+	grabbed = part
+	local att = getOrCreateAttachment(part)
+	script.AlignPosition.Attachment0 = att
+	script.AlignOrientation.Attachment0 = att
 	state = DragState.Dragging
 	return true
 end
 
-UserInputService.InputBegan:Connect(function(input, processed)
-	if processed or input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+-- ===== Input =====
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp or input.UserInputType ~= Enum.UserInputType.MouseButton1 then
 		return
 	end
 
 	if state == DragState.Dragging then
-		dropObject()
-		return
-	end
-
-	if state == DragState.Hovering and target then
-		tryStartDrag(target)
+		drop()
+	elseif state == DragState.Hovering and target then
+		tryDrag(target)
 	end
 end)
 
-UserInputService.InputChanged:Connect(function(input, processed)
-	if processed or input.UserInputType ~= Enum.UserInputType.MouseWheel then
+UserInputService.InputChanged:Connect(function(input, gp)
+	if gp or input.UserInputType ~= Enum.UserInputType.MouseWheel then
 		return
 	end
-
-	if state == DragState.Dragging and grabbedObject then
-		local delta = input.Position.Z
-		if delta ~= 0 then
-			setDistance(distance + delta * SCROLL_STEP)
-		end
-	end
-end)
-
-ForcePickupRemote.OnClientEvent:Connect(function(object: Part)
-	-- Server can force a pickup after spawning an item.
 	if state == DragState.Dragging then
-		dropObject()
-		return
-	end
-	if tryStartDrag(object) then
-		setHighlight(object)
+		clampDistance(distance + input.Position.Z * SCROLL_STEP)
 	end
 end)
 
-local function getBaseCFrame(): CFrame
+ForcePickupRemote.OnClientEvent:Connect(function(part)
+	if state == DragState.Dragging then
+		drop()
+	end
+	if tryDrag(part) then
+		setHighlight(part)
+	end
+end)
+
+-- ===== Camera / Target =====
+local function baseCFrame()
 	if UserInputService.VREnabled then
 		return camera.CFrame * VRService:GetUserCFrame(Enum.UserCFrame.RightHand)
 	end
 	return camera.CFrame
 end
 
-local function updateDragTargetAttachment(baseCF: CFrame)
-	dragTargetAttachment.WorldCFrame = baseCF * CFrame.new(0, 0, -distance)
+local function updateTarget(cf)
+	dragTarget.WorldCFrame = cf * CFrame.new(0, 0, -distance)
 end
 
+-- ===== Main Loop =====
 RunService.RenderStepped:Connect(function()
-	-- Per-frame update: drag target and highlight.
-	local baseCF = getBaseCFrame()
-	if state == DragState.Dragging and grabbedObject then
-		updateDragTargetAttachment(baseCF)
+	local cf = baseCFrame()
+	updateTarget(cf)
+
+	if state == DragState.Dragging then
 		return
 	end
 
-	local mousePos = UserInputService:GetMouseLocation()
-	local ray = camera:ViewportPointToRay(mousePos.X, mousePos.Y)
+	local focusPos = cf.Position + cf.LookVector * distance
 
-	local result = workspace:Raycast(ray.Origin, ray.Direction * RAYCAST_DISTANCE, rayParams)
-	local hit = result and result.Instance
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Whitelist
+	params.FilterDescendantsInstances = CollectionService:GetTagged("Draggable")
 
-	if hit and hit:HasTag("Draggable") and not isBeingDragged(hit) then
-		target = hit
+	local parts = workspace:GetPartBoundsInRadius(focusPos, OVERLAP_RADIUS, params)
+
+	local rayDir = cf.LookVector
+	local origin = cf.Position
+
+	local best, bestScore
+
+	for _, part in ipairs(parts) do
+		if not isBeingDragged(part) then
+			local toPart = part.Position - origin
+			local forward = toPart:Dot(rayDir)
+			if forward > 0 then
+				local lateral = (toPart - rayDir * forward).Magnitude
+				local score = forward - lateral * 1.5
+				if not bestScore or score > bestScore then
+					best = part
+					bestScore = score
+				end
+			end
+		end
+	end
+
+	if best then
+		target = best
 		state = DragState.Hovering
-		setDistance((ray.Origin - result.Position).Magnitude)
 	else
 		target = nil
 		state = DragState.Idle
-		setDistance(DEFAULT_DRAG_DISTANCE)
 	end
 
-	updateDragTargetAttachment(baseCF)
 	setHighlight(target)
 end)

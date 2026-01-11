@@ -48,14 +48,8 @@ function NoodleMachine:_init()
 			local newNoodles = Ingredients:FindFirstChild("Noodles"):Clone()
 			newNoodles.Parent = workspace.SpawnedObjects
 
-			task.wait()
-
 			newNoodles:SetPrimaryPartCFrame(oldCF * CFrame.new(0, 1, 0))
 			ingredient:Destroy()
-
-			task.wait()
-
-			ForcePickupRemote:FireClient(player, newNoodles.PrimaryPart)
 		end
 	end)
 end
