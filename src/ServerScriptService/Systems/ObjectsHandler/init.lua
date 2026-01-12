@@ -59,7 +59,6 @@ function ObjectsHandler.init(modulesRoot: Instance?)
 		end
 
 		CollectionService:GetInstanceAddedSignal(tag):Connect(function(model)
-			print("Added", tag, model)
 			attach(tag, model)
 		end)
 
