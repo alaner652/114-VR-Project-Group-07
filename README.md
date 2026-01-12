@@ -106,9 +106,9 @@ ServerScriptService
 
 ## 開發與同步（可選）
 
-- 本專案提供 `default.project.json` 供 Rojo 使用。
-- 安裝工具（擇一）：`aftman install` 或 `rokit install`。
-- 啟動同步：`rojo serve --project default.project.json`，再用 Studio 的 Rojo 插件連線。
+- `default.project.json` 供 [Rojo](https://github.com/rojo-rbx/rojo) 使用。
+- 工具安裝：`aftman install`（[Aftman](https://github.com/LPGhatguy/aftman)）或 `rokit install`（[Rokit](https://github.com/rojo-rbx/rokit)）。
+- 同步：`rojo serve --project default.project.json`，再用 Studio 的 Rojo 插件連線。
 
 ## 常見問題 / 排錯
 
@@ -120,21 +120,18 @@ ServerScriptService
 
 ## 導入 Roblox Studio
 
-1. 到 GitHub Releases 下載：`https://github.com/alaner652/114-VR-Project-Group-07/releases/tag/demo`。
-2. 在 Assets 下載 `VR RAMEN SHOP.zip`，並解壓縮。
-3. 若已安裝 Roblox Studio，直接雙擊解壓後的 `.rbxl` 即可開啟。
-4. 或在 Studio 內使用 `File > Open` 開啟 `.rbxl`。
-5. 若是 `.rbxm`：使用 `Model > Insert From File` 匯入。
+1. 下載：[Releases / demo](https://github.com/alaner652/114-VR-Project-Group-07/releases/tag/demo) → Assets → `VR RAMEN SHOP.zip`，解壓。
+2. 已安裝 [Roblox Studio](https://www.roblox.com/create)：雙擊 `.rbxl` 開啟，或用 `File > Open`。
+3. `.rbxm` 用 `Model > Insert From File` 匯入。
 
 ## 查看原始碼
 
-- GitHub：進入專案頁面，切到 `Code` 分頁即可瀏覽；需要下載可用 `Download ZIP` 或 `git clone https://github.com/alaner652/114-VR-Project-Group-07`。
-- 本機：直接打開專案資料夾的 `src` 目錄即可查看所有腳本。
+- GitHub：[專案頁面](https://github.com/alaner652/114-VR-Project-Group-07)；可用 `Download ZIP` 或 `git clone https://github.com/alaner652/114-VR-Project-Group-07`。
+- 本機：直接打開 `src` 目錄查看腳本。
 - Roblox Studio：匯入檔案後，在 Explorer 展開 `ServerScriptService`、`StarterPlayer` 等節點查看腳本。
 
 ## Demo
 
-- https://www.roblox.com/games/108007882125822/VR-RAMEN-SHOP
-- https://youtu.be/gYcwkoDgL_g（試玩與教學影片）
-- 進入連結後點擊「遊玩」。
+- [VR RAMEN SHOP](https://www.roblox.com/games/108007882125822/VR-RAMEN-SHOP)
+- [試玩與教學影片](https://youtu.be/gYcwkoDgL_g)
 - 若未安裝 Roblox Player，依提示安裝即可。
