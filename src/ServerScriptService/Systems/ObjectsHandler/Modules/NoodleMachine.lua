@@ -43,6 +43,10 @@ function NoodleMachine:_init()
 		end
 
 		if ingredient.Name == "Dough" then
+			if ingredient:GetAttribute("Active") ~= true then
+				return
+			end
+
 			local oldCF = ingredient.PrimaryPart.CFrame
 
 			local newNoodles = Ingredients:FindFirstChild("Noodles"):Clone()

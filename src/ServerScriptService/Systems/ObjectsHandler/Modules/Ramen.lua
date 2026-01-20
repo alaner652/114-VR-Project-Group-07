@@ -1,4 +1,3 @@
-local CollectionService = game:GetService("CollectionService")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local ReleaseDraggingObject = ServerScriptService.Bindables.ReleaseDraggingObject
