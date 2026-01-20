@@ -25,14 +25,14 @@ local function getClickableModel(instance: Instance): Model?
 		return nil
 	end
 
-	local model = instance:FindFirstAncestorOfClass("Model")
-	if not model then
+	local parent = instance.Parent
+	if not parent or not parent:IsA("Model") then
 		return nil
 	end
 
-	for _, desc in ipairs(model:GetDescendants()) do
+	for _, desc in ipairs(parent:GetChildren()) do
 		if desc:IsA("ClickDetector") then
-			return model
+			return parent
 		end
 	end
 
@@ -62,6 +62,8 @@ RunService.RenderStepped:Connect(function()
 	local ray = camera:ViewportPointToRay(mousePos.X, mousePos.Y)
 
 	local result = workspace:Raycast(ray.Origin, ray.Direction * 10, rayParams)
+
+	--print(result and result.Instance or nil)
 
 	if result and result.Instance then
 		local model = getClickableModel(result.Instance)
