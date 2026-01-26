@@ -1,7 +1,6 @@
 local ServerScriptService = game:GetService("ServerScriptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Ingredients = ReplicatedStorage:WaitForChild("Ingredients")
-local ForcePickupRemote = ReplicatedStorage:WaitForChild("ForcePickup")
 
 local Bindables = ServerScriptService:WaitForChild("Bindables")
 local GetDraggingObject = Bindables:WaitForChild("GetDraggingObject")
